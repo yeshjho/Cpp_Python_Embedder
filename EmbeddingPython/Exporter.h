@@ -3,6 +3,7 @@
 #define PY_SSIZE_T_CLEAN
 #include <python/Python.h>
 
+#include <stdexcept>
 #include <string>
 #include <tuple>
 #include <unordered_map>
@@ -18,10 +19,17 @@
 #include <boost/function_types/parameter_types.hpp>
 #include <boost/function_types/result_type.hpp>
 
-#include <glm/glm.hpp>
+#include <xxhash_cx/xxhash_cx.h>
+
+
+using xxhash::literals::operator ""_xxh64;
+
+#define PY_EXPORT_FUNCTION(funcName, moduleName) Exporter<#moduleName##_xxh64>::RegisterFunction<decltype(&(funcName)), &(funcName)>(#funcName)
+#define PY_EXPORT_MODULE(moduleName) Exporter<#moduleName##_xxh64>::Export(#moduleName)
 
 
 // TODO: Memory Leak (INCREF, DECREF)
+// TODO: Define some macros for easy register
 
 
 // TODO: Let the user define these easily
@@ -99,17 +107,24 @@ public:
 	static void RegisterFunction(const char* functionName);
 
 
-	template<typename Function, typename ClassType>
-	static void RegisterMemberFunction(const char* moduleName, const char* functionName, Function* functionPtr, ClassType* instance)
+	template<typename Function, typename InstanceReturnFunction>
+	static void RegisterMemberFunction(const char* moduleName, const char* functionName, Function* functionPtr, InstanceReturnFunction instance)
 	{
-
+		// TODO
 	}
 
 
-	template<typename Function, typename InstanceReturner>
-	static void RegisterMemberFunction(const char* moduleName, const char* functionName, Function* functionPtr, InstanceReturner instance)
+	template<typename T>
+	static void RegisterType(const char* typeName)
 	{
-
+		PyTypeObject typeObject{ PyVarObject_HEAD_INIT(nullptr, 0) };
+		typeObject.tp_name = typeName;
+		typeObject.tp_basicsize = sizeof(T);  // + sizeof(PyObject)?
+		typeObject.tp_itemsize = 0;
+		typeObject.tp_flags = Py_TPFLAGS_DEFAULT;
+		typeObject.tp_new = PyType_GenericNew;
+		
+		types.push_back(typeObject);
 	}
 
 
@@ -123,12 +138,27 @@ public:
 
 	static PyObject* Init()
 	{
+		static bool hasInitialized = false;
+		if (hasInitialized)
+		{
+			throw std::runtime_error(moduleName + " is already initialized");
+		}
+		hasInitialized = true;
+		
 		moduleDef = {
 			PyModuleDef_HEAD_INIT, moduleName.c_str(), nullptr, -1, methods.data(),
 				nullptr, nullptr, nullptr, nullptr
 		};
 		
-		return PyModule_Create(&moduleDef);
+		PyObject* const pyModule = PyModule_Create(&moduleDef);
+
+		for (PyTypeObject& type : types)
+		{
+			Py_INCREF(&type);
+			PyModule_AddType(pyModule, &type);
+		}
+		
+		return pyModule;
 	}
 
 
@@ -137,6 +167,8 @@ private:
 	inline static std::string moduleName;
 	
 	inline static std::vector<PyMethodDef> methods;
+	inline static std::vector<PyTypeObject> types;
+	
 	inline static PyModuleDef moduleDef;
 };
 

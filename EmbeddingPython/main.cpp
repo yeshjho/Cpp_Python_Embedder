@@ -3,7 +3,6 @@
 
 #include <iostream>
 
-#include <xxhash_cx/xxhash_cx.h>
 
 
 //template<typename T>
@@ -61,14 +60,14 @@ int main()
 	// https://www.codeproject.com/Articles/820116/Embedding-Python-program-in-a-C-Cplusplus-code
 	//
 	// https://stackoverflow.com/questions/19282054/parsing-user-defined-types-using-pyarg-parsetuple
+	// 
+	// https://docs.python.org/3/c-api/
 	// https://docs.python.org/3.8/c-api/arg.html
+	// https://docs.python.org/3/extending/newtypes_tutorial.html
 
-	
-	using xxhash::literals::operator ""_xxh64;
-
-	Exporter<"test"_xxh64>::RegisterFunction<decltype(&add_5), &add_5>("add_5");
-	Exporter<"test"_xxh64>::RegisterFunction<decltype(&crazy_function), &crazy_function>("crazy_function");
-	Exporter<"test"_xxh64>::Export("test");
+	PY_EXPORT_FUNCTION(add_5, test);
+	PY_EXPORT_FUNCTION(crazy_function, test);
+	PY_EXPORT_MODULE(test);
 	
 	Py_Initialize();
 
