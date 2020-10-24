@@ -3,38 +3,40 @@
 
 #include <iostream>
 
-
-template<typename T>
-static PyObject* spam_system([[maybe_unused]] PyObject* self, PyObject* args)
-{
-	int command;
-
-	if (!PyArg_ParseTuple(args, "i", &command))
-	{
-		return nullptr;
-	}
-
-	std::cout << command;
-	
-	return PyLong_FromLong(0);
-}
-
-static struct PyMethodDef methods[]
-{
-	{ "say_hi", &spam_system<int>, METH_VARARGS, "" },
-	{ nullptr, nullptr, 0, nullptr }
-};
-
-static struct PyModuleDef moduleDef{
-	PyModuleDef_HEAD_INIT, "test", "test module", -1, methods,
-	nullptr, nullptr, nullptr, nullptr
-};
+#include <xxhash_cx/xxhash_cx.h>
 
 
-PyMODINIT_FUNC PyInit_void()
-{
-	return PyModule_Create(&moduleDef);
-}
+//template<typename T>
+//static PyObject* spam_system([[maybe_unused]] PyObject* self, PyObject* args)
+//{
+//	int command;
+//
+//	if (!PyArg_ParseTuple(args, "i", &command))
+//	{
+//		return nullptr;
+//	}
+//
+//	std::cout << command;
+//	
+//	return PyLong_FromLong(0);
+//}
+//
+//static struct PyMethodDef methods[]
+//{
+//	{ "say_hi", &spam_system<int>, METH_VARARGS, "" },
+//	{ nullptr, nullptr, 0, nullptr }
+//};
+//
+//static struct PyModuleDef moduleDef{
+//	PyModuleDef_HEAD_INIT, "test", "test module", -1, methods,
+//	nullptr, nullptr, nullptr, nullptr
+//};
+//
+//
+//PyMODINIT_FUNC PyInit_void()
+//{
+//	return PyModule_Create(&moduleDef);
+//}
 
 
 std::string add_5(int i)
@@ -62,11 +64,11 @@ int main()
 	// https://docs.python.org/3.8/c-api/arg.html
 
 	
-	//PyImport_AppendInittab("test", PyInit_void);
+	using xxhash::literals::operator ""_xxh64;
 
-	Exporter::RegisterFunction<decltype(&add_5), &add_5>("test", "add_5");
-	Exporter::RegisterFunction<decltype(&crazy_function), &crazy_function>("test", "crazy_function");
-	Exporter::Export("test");
+	Exporter<"test"_xxh64>::RegisterFunction<decltype(&add_5), &add_5>("add_5");
+	Exporter<"test"_xxh64>::RegisterFunction<decltype(&crazy_function), &crazy_function>("crazy_function");
+	Exporter<"test"_xxh64>::Export("test");
 	
 	Py_Initialize();
 
@@ -75,8 +77,6 @@ int main()
 	PyRun_AnyFile(script, scriptName);
 
 	Py_Finalize();
-
-	//PyRun_SimpleString("print('Hello World from Embedded Python!!!')");
 	
 	return 0;
 }
