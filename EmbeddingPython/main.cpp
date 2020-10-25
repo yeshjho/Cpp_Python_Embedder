@@ -62,7 +62,7 @@ public:
 		std::cout << "All is good!" << std::endl;
 	}
 
-
+	C() = default;
 	C(int i): i(i){}
 
 	void Print2(std::string s)
@@ -71,8 +71,9 @@ public:
 	}
 
 
-private:
+
 	int i;
+	short j;
 };
 
 C* instance_returner(int i)
@@ -91,11 +92,14 @@ int main()
 	// https://docs.python.org/3/c-api/
 	// https://docs.python.org/3.8/c-api/arg.html
 	// https://docs.python.org/3/extending/newtypes_tutorial.html
-	
+
 	PY_EXPORT_GLOBAL_FUNCTION(add_5, test);
 	PY_EXPORT_GLOBAL_FUNCTION(crazy_function, test);
 	PY_EXPORT_STATIC_FUNCTION(C::Print, Print, test);
 	PY_EXPORT_MEMBER_FUNCTION(C::Print2, Print2, instance_returner, test);
+
+	PY_EXPORT_TYPE(C, test, (i)(j));
+	
 	PY_EXPORT_MODULE(test);
 	
 	Py_Initialize();

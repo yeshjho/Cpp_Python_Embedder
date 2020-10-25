@@ -2,6 +2,7 @@
 // This should be included before any std header
 #define PY_SSIZE_T_CLEAN
 #include <python/Python.h>
+#include <python/structmember.h>
 
 #include <stdexcept>
 #include <string>
@@ -19,20 +20,31 @@
 #include <boost/function_types/parameter_types.hpp>
 #include <boost/function_types/result_type.hpp>
 
+#include <boost/preprocessor/seq/for_each.hpp>
+
 #include <xxhash_cx/xxhash_cx.h>
 
 
 using xxhash::literals::operator ""_xxh64;
 
 
+#define PY_EXPORTER_MEMBER(T, memberName) { #memberName, python_embedder_detail::get_member_type_number<decltype(T::memberName)>(), offsetof(python_embedder_detail::PyExportedClass<T>, t) + offsetof(T, memberName), 0, nullptr },
+#define PY_EXPORTER_EXPANDER(r, T, memberName) PY_EXPORTER_MEMBER(T, memberName)
+#define PY_EXPORTER_MEMBERS(T, ...) BOOST_PP_SEQ_FOR_EACH(PY_EXPORTER_EXPANDER, T, __VA_ARGS__) { nullptr }
+
 #define PY_EXPORT_STATIC_FUNCTION(func, funcName, moduleName) Exporter<#moduleName##_xxh64>::RegisterFunction<decltype(&##func), &##func>(#funcName)
 #define PY_EXPORT_GLOBAL_FUNCTION(funcName, moduleName) PY_EXPORT_STATIC_FUNCTION(funcName, funcName, moduleName);
+#define PY_EXPORT_MEMBER_FUNCTION(func, funcName, instanceReturner, moduleName) Exporter<#moduleName##_xxh64>::RegisterMemberFunction<decltype(&##func), &##func, decltype(&##instanceReturner), &##instanceReturner>(#funcName)
+
+#define PY_EXPORT_TYPE(T, moduleName, ...) Exporter<#moduleName##_xxh64>::RegisterType<T>(#T, { PY_EXPORTER_MEMBERS(T, __VA_ARGS__) })
+
+#define PY_EXPORT_MODULE(moduleName) Exporter<#moduleName##_xxh64>::Export(#moduleName)
+
+
 //#define PY_EXPORT_MEMBER_FUNCTION(func, funcName, instanceReturner, moduleName) static auto funcName##instanceReturnFunction = instanceReturner; \
 //	Exporter<#moduleName##_xxh64>::RegisterMemberFunction<decltype(&##func), &##func, decltype(&##funcName##instanceReturnFunction), &##funcName##instanceReturnFunction>(#funcName)
 // TODO: Support Lambda https://qiita.com/angeart/items/94734d68999eca575881
-#define PY_EXPORT_MEMBER_FUNCTION(func, funcName, instanceReturner, moduleName) Exporter<#moduleName##_xxh64>::RegisterMemberFunction<decltype(&##func), &##func, decltype(&##instanceReturner), &##instanceReturner>(#funcName)
 
-#define PY_EXPORT_MODULE(moduleName) Exporter<#moduleName##_xxh64>::Export(#moduleName)
 
 
 // TODO: Memory Leak (INCREF, DECREF)
@@ -48,6 +60,7 @@ template<typename T>
 class Converter<T, std::enable_if_t<std::is_trivially_copyable_v<T>>>
 {
 public:
+	// TODO: implement
 	static int ParseValue(PyObject* pyObject, T* pT)
 	{
 		*pT = *reinterpret_cast<T*>(Py_TYPE(pyObject));
@@ -79,6 +92,7 @@ namespace python_embedder_detail
 	using TailsParameterTuple = decltype(get_tails_parameter_tuple_helper(std::declval<ParameterTuple<ParameterTypes, ParameterCount>>()));
 	
 
+	
 	template<typename ParameterType, typename = void>
 	struct TempVar
 	{
@@ -96,9 +110,30 @@ namespace python_embedder_detail
 
 
 
+	template<typename T, typename = std::enable_if_t<std::is_default_constructible_v<T>>>
+	struct PyExportedClass
+	{
+		PyObject_HEAD
+		T t;
+
+		
+		inline static std::vector<PyMemberDef> members;
+
+		// TODO: implement
+		static PyObject* CustomNew(PyTypeObject* type, PyObject* args, PyObject* keywords);
+		static int CustomInit(PyObject* self, PyObject* args, PyObject* keywords);
+		static void CustomDealloc(PyObject* self);
+	};
+	
+
 
 	template<typename T>
 	[[nodiscard]] static constexpr const char* get_fundamental_format_string() noexcept;
+
+	template<typename T>
+	[[nodiscard]] static constexpr int get_member_type_number() noexcept;
+
+	
 
 	template<typename FunctionPtrType, FunctionPtrType FunctionPtr, typename ReturnType, size_t ParameterCount, typename ParameterTypeTuple>
 	class Dispatcher
@@ -107,6 +142,8 @@ namespace python_embedder_detail
 		static PyObject* ReplicatedFunction(PyObject* self, PyObject* args);
 	};
 
+
+	
 	template<typename FunctionPtrType, FunctionPtrType FunctionPtr, typename ReturnType, size_t ParameterCount, typename ParameterTypeTuple,
 		typename InstanceReturnFunctionType, InstanceReturnFunctionType InstanceReturnFunction, typename InstanceReturnFunctionReturnType, size_t InstanceReturnFunctionParameterCount, typename InstanceReturnFunctionParameterTuple>
 	class MemberDispatcher
@@ -114,7 +151,6 @@ namespace python_embedder_detail
 	public:
 		static PyObject* ReplicatedFunction(PyObject* self, PyObject* args);
 	};
-
 }
 
 
@@ -132,17 +168,7 @@ public:
 
 
 	template<typename T>
-	static void RegisterType(const char* typeName)
-	{
-		PyTypeObject typeObject{ PyVarObject_HEAD_INIT(nullptr, 0) };
-		typeObject.tp_name = typeName;
-		typeObject.tp_basicsize = sizeof(T);  // + sizeof(PyObject)?
-		typeObject.tp_itemsize = 0;
-		typeObject.tp_flags = Py_TPFLAGS_DEFAULT;
-		typeObject.tp_new = PyType_GenericNew;
-		
-		types.push_back(typeObject);
-	}
+	static void RegisterType(const char* typeName, std::initializer_list<PyMemberDef> members);
 
 
 	static void Export(const std::string& moduleName_)
@@ -177,7 +203,6 @@ public:
 		
 		return pyModule;
 	}
-
 
 
 private:
@@ -530,6 +555,76 @@ constexpr const char* python_embedder_detail::get_fundamental_format_string() no
 
 
 
+template <typename T>
+constexpr int python_embedder_detail::get_member_type_number() noexcept
+{
+	if constexpr (std::is_same_v<T, bool>)
+	{
+		return T_BOOL;
+	}
+	// This time, assume it as a number
+	else if constexpr (std::is_same_v<T, char>)
+	{
+		return T_BYTE;
+	}
+	else if constexpr (std::is_same_v<T, unsigned char>)
+	{
+		return T_UBYTE;
+	}
+	else if constexpr (std::is_same_v<T, short>)
+	{
+		return T_SHORT;
+	}
+	else if constexpr (std::is_same_v<T, unsigned short>)
+	{
+		return T_USHORT;
+	}
+	else if constexpr (std::is_same_v<T, int>)
+	{
+		return T_INT;
+	}
+	else if constexpr (std::is_same_v<T, unsigned int>)
+	{
+		return T_UINT;
+	}
+	else if constexpr (std::is_same_v<T, long>)
+	{
+		return T_LONG;
+	}
+	else if constexpr (std::is_same_v<T, unsigned long>)
+	{
+		return T_ULONG;
+	}
+	else if constexpr (std::is_same_v<T, long long>)
+	{
+		return T_LONGLONG;
+	}
+	else if constexpr (std::is_same_v<T, unsigned long long>)
+	{
+		return T_ULONGLONG;
+	}
+	else if constexpr (std::is_same_v<T, float>)
+	{
+		return T_FLOAT;
+	}
+	else if constexpr (std::is_same_v<T, double>)
+	{
+		return T_DOUBLE;
+	}
+	/// long double is not supported by python API
+	else if constexpr (std::is_same_v<T, const char*>)
+	{
+		return T_STRING;
+	}
+	else
+	{
+		_ASSERT(false);
+		return -1;
+	}
+}
+
+
+
 template <unsigned long long ModuleNameHashValue>
 template <typename FunctionPtrType, FunctionPtrType FunctionPtr>
 void Exporter<ModuleNameHashValue>::RegisterFunction(const char* functionName)
@@ -570,4 +665,26 @@ void Exporter<ModuleNameHashValue>::RegisterMemberFunction(const char* functionN
 		InstanceReturnFunctionType, InstanceReturnFunction, InstanceReturnerReturnType, instanceReturnerParameterCount, InstanceReturnerParameterTypeTuple>;
 
 	methods.push_back(PyMethodDef{ functionName, &InstantiatedDispatcher::ReplicatedFunction, METH_VARARGS, nullptr });
+}
+
+
+template <unsigned long long ModuleNameHashValue>
+template <typename T>
+void Exporter<ModuleNameHashValue>::RegisterType(const char* typeName, std::initializer_list<PyMemberDef> members)
+{
+	using PyExportedType = python_embedder_detail::PyExportedClass<T>;
+
+	PyExportedType::members = members;
+	
+	PyTypeObject typeObject{ PyVarObject_HEAD_INIT(nullptr, 0) };
+	typeObject.tp_name = typeName;
+	typeObject.tp_basicsize = sizeof(PyExportedType);
+	typeObject.tp_itemsize = 0;
+	typeObject.tp_flags = Py_TPFLAGS_DEFAULT;
+	typeObject.tp_new = &PyExportedType::CustomNew;
+	typeObject.tp_init = &PyExportedType::CustomInit;
+	typeObject.tp_dealloc = &PyExportedType::CustomDealloc;
+	typeObject.tp_members = PyExportedType::members.data();
+
+	types.push_back(typeObject);
 }
