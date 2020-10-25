@@ -54,6 +54,33 @@ void crazy_function(bool b, char c, unsigned char C, short s, unsigned short S, 
 		str << std::endl;
 }
 
+class C
+{
+public:
+	static void Print()
+	{
+		std::cout << "All is good!" << std::endl;
+	}
+
+
+	C(int i): i(i){}
+
+	void Print2(std::string s)
+	{
+		std::cout << "Called! " << i << s << std::endl;
+	}
+
+
+private:
+	int i;
+};
+
+C* instance_returner(int i)
+{
+	static C c(i);
+	return &c;
+}
+
 int main()
 {
 	// https://docs.python.org/3/extending/extending.html
@@ -64,9 +91,11 @@ int main()
 	// https://docs.python.org/3/c-api/
 	// https://docs.python.org/3.8/c-api/arg.html
 	// https://docs.python.org/3/extending/newtypes_tutorial.html
-
-	PY_EXPORT_FUNCTION(add_5, test);
-	PY_EXPORT_FUNCTION(crazy_function, test);
+	
+	PY_EXPORT_GLOBAL_FUNCTION(add_5, test);
+	PY_EXPORT_GLOBAL_FUNCTION(crazy_function, test);
+	PY_EXPORT_STATIC_FUNCTION(C::Print, Print, test);
+	PY_EXPORT_MEMBER_FUNCTION(C::Print2, Print2, instance_returner, test);
 	PY_EXPORT_MODULE(test);
 	
 	Py_Initialize();
