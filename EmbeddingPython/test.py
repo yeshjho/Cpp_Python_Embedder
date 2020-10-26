@@ -5,12 +5,12 @@ test.crazy_function(True, 'r', -1, 10, -1, 40, -1, 960, -1, 45678, -1, 3.423, -5
 test.Print()
 test.Print2((123,), "a string coming right up!")
 
-vec = test.Vec('would this work?', 20, 30)
+vec = test.Vec(10, 20, 30)
 
-test.f(vec)
+test.f(vec.add(test.Vec(4, 5, 6)))
 
-result = test.g(30)
-test.i(vec.x)
+result = test.g(9)
+test.h(vec.x)
 test.h(vec.y)
 test.h(vec.z)
 test.f(result)

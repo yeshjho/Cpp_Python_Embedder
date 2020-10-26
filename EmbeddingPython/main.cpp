@@ -85,9 +85,14 @@ C* instance_returner(int i)
 
 struct Vec
 {
-	const char* x;
-	double y;
-	int z;
+	float x;
+	float y;
+	float z;
+
+	Vec add(Vec c)
+	{
+		return { x + c.x, y + c.y, z + c.z };
+	}
 };
 
 
@@ -98,17 +103,12 @@ void f(Vec v)
 
 Vec g(float i)
 {
-	return Vec{ "default string", i * 200, int(i * 300) };
+	return Vec{ i * 100.f, i * 200.f, i * 300.f };
 }
 
 void h(float f)
 {
 	std::cout << f << std::endl;
-}
-
-void i(const char* c)
-{
-	std::cout << c << std::endl;
 }
 
 
@@ -126,14 +126,14 @@ int main()
 	PY_EXPORT_GLOBAL_FUNCTION(add_5, test);
 	PY_EXPORT_GLOBAL_FUNCTION(crazy_function, test);
 	PY_EXPORT_STATIC_FUNCTION(C::Print, Print, test);
-	PY_EXPORT_MEMBER_FUNCTION(C::Print2, Print2, instance_returner, test);
-	
+	PY_EXPORT_MEMBER_FUNCTION_AS_STATIC_FUNCTION(C::Print2, Print2, instance_returner, test);
+
+	PY_EXPORT_MEMBER_FUNCTION(Vec, Vec::add, add, test);
 	PY_EXPORT_TYPE(Vec, test, (x)(y)(z));
 
 	PY_EXPORT_GLOBAL_FUNCTION(f, test);
 	PY_EXPORT_GLOBAL_FUNCTION(g, test);
 	PY_EXPORT_GLOBAL_FUNCTION(h, test);
-	PY_EXPORT_GLOBAL_FUNCTION(i, test);
 	
 	PY_EXPORT_MODULE(test);
 	

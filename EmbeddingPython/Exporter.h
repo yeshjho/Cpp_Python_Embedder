@@ -47,7 +47,8 @@ using xxhash::literals::operator ""_xxh64;
 
 #define PY_EXPORT_STATIC_FUNCTION(func, funcName, moduleName) Exporter<#moduleName##_xxh64>::RegisterFunction<decltype(&##func), &##func>(#funcName)
 #define PY_EXPORT_GLOBAL_FUNCTION(funcName, moduleName) PY_EXPORT_STATIC_FUNCTION(funcName, funcName, moduleName);
-#define PY_EXPORT_MEMBER_FUNCTION(func, funcName, instanceReturner, moduleName) Exporter<#moduleName##_xxh64>::RegisterMemberFunction<decltype(&##func), &##func, decltype(&##instanceReturner), &##instanceReturner>(#funcName)
+#define PY_EXPORT_MEMBER_FUNCTION_AS_STATIC_FUNCTION(func, funcName, instanceReturner, moduleName) Exporter<#moduleName##_xxh64>::RegisterMemberFunctionAsStaticFunction<decltype(&##func), &##func, decltype(&##instanceReturner), &##instanceReturner>(#funcName)
+#define PY_EXPORT_MEMBER_FUNCTION(T, func, funcName, moduleName) Exporter<#moduleName##_xxh64>::RegisterMemberFunction<decltype(&##func), &##func, T>(#funcName)
 
 #define PY_EXPORT_TYPE(T, moduleName, seq) Exporter<#moduleName##_xxh64>::RegisterType<T, std::integer_sequence<size_t, PY_EXPORTER_FIELD_OFFSETS(T, seq)>, PY_EXPORTER_FIELD_TYPES(T, seq)>(#T, { PY_EXPORTER_FIELDS(T, seq) })
 
@@ -57,10 +58,6 @@ using xxhash::literals::operator ""_xxh64;
 //#define PY_EXPORT_MEMBER_FUNCTION(func, funcName, instanceReturner, moduleName) static auto funcName##instanceReturnFunction = instanceReturner; \
 //	Exporter<#moduleName##_xxh64>::RegisterMemberFunction<decltype(&##func), &##func, decltype(&##funcName##instanceReturnFunction), &##funcName##instanceReturnFunction>(#funcName)
 // TODO: Support Lambda https://qiita.com/angeart/items/94734d68999eca575881
-
-
-// TODO: Export method of already exported class
-
 
 
 // TODO: Memory Leak (INCREF, DECREF) https://docs.python.org/3/c-api/intro.html#objects-types-and-reference-counts
@@ -124,6 +121,7 @@ namespace python_embedder_detail
 
 		inline static PyTypeObject typeInfo;
 		inline static std::vector<PyMemberDef> fields;
+		inline static std::vector<PyMethodDef> methods;
 
 		
 		static PyObject* CustomNew(PyTypeObject* type, PyObject* args, PyObject* keywords);
@@ -162,10 +160,17 @@ namespace python_embedder_detail
 		static PyObject* ReplicatedFunction(PyObject* self, PyObject* args);
 	};
 
-
 	
 	template<typename FunctionPtrType, FunctionPtrType FunctionPtr, typename ReturnType, size_t ParameterCount, typename ParameterTypeTuple,
 		typename InstanceReturnFunctionType, InstanceReturnFunctionType InstanceReturnFunction, typename InstanceReturnFunctionReturnType, size_t InstanceReturnFunctionParameterCount, typename InstanceReturnFunctionParameterTuple>
+	class MemberAsStaticDispatcher
+	{
+	public:
+		static PyObject* ReplicatedFunction(PyObject* self, PyObject* args);
+	};
+
+
+	template<typename FunctionPtrType, FunctionPtrType FunctionPtr, typename ReturnType, size_t ParameterCount, typename ParameterTypeTuple, typename Class>
 	class MemberDispatcher
 	{
 	public:
@@ -184,6 +189,10 @@ public:
 
 
 	template<typename FunctionPtrType, FunctionPtrType FunctionPtr, typename InstanceReturnFunctionType, InstanceReturnFunctionType InstanceReturnFunction>
+	static void RegisterMemberFunctionAsStaticFunction(const char* functionName);
+
+
+	template<typename FunctionPtrType, FunctionPtrType FunctionPtr, typename Class>
 	static void RegisterMemberFunction(const char* functionName);
 
 
@@ -409,7 +418,7 @@ PyObject* python_embedder_detail::Dispatcher<FunctionPtrType, FunctionPtr, Retur
 
 
 template <typename FunctionPtrType, FunctionPtrType FunctionPtr, typename ReturnType, size_t ParameterCount, typename ParameterTypeTuple, typename InstanceReturnFunctionType, InstanceReturnFunctionType InstanceReturnFunction, typename InstanceReturnFunctionReturnType, size_t InstanceReturnFunctionParameterCount, typename InstanceReturnFunctionParameterTypeTuple>
-PyObject* python_embedder_detail::MemberDispatcher<FunctionPtrType, FunctionPtr, ReturnType, ParameterCount, ParameterTypeTuple, InstanceReturnFunctionType, InstanceReturnFunction, InstanceReturnFunctionReturnType, InstanceReturnFunctionParameterCount, InstanceReturnFunctionParameterTypeTuple>
+PyObject* python_embedder_detail::MemberAsStaticDispatcher<FunctionPtrType, FunctionPtr, ReturnType, ParameterCount, ParameterTypeTuple, InstanceReturnFunctionType, InstanceReturnFunction, InstanceReturnFunctionReturnType, InstanceReturnFunctionParameterCount, InstanceReturnFunctionParameterTypeTuple>
 	::ReplicatedFunction([[maybe_unused]] PyObject* self, PyObject* args)
 {
 	InstanceReturnFunctionParameterTypeTuple instanceReturnerArguments;
@@ -525,6 +534,99 @@ PyObject* python_embedder_detail::MemberDispatcher<FunctionPtrType, FunctionPtr,
 	
 	InstanceReturnFunctionReturnType instance = std::apply(InstanceReturnFunction, instanceReturnerArguments);
 	auto thisPtrAddedArguments = std::tuple_cat(std::make_tuple(instance), arguments);
+
+	PyObject* toReturn;
+	if constexpr (std::is_same_v<ReturnType, void>)
+	{
+		std::apply(FunctionPtr, thisPtrAddedArguments);
+
+		toReturn = Py_None;
+	}
+	else
+	{
+		ReturnType returnValue = std::apply(FunctionPtr, thisPtrAddedArguments);
+
+		if constexpr (std::is_fundamental_v<ReturnType> || std::is_same_v<ReturnType, const char*>)
+		{
+			const char* format = get_argument_type_format_string<ReturnType>();
+
+			toReturn = Py_BuildValue(format, returnValue);
+		}
+		else if constexpr (std::is_same_v<ReturnType, std::string>)
+		{
+			toReturn = Py_BuildValue("s", returnValue.c_str());
+		}
+		else
+		{
+			toReturn = Py_BuildValue("O&", &Converter<ReturnType>::BuildValue, returnValue);
+		}
+	}
+
+	Py_INCREF(toReturn);
+	return toReturn;
+}
+
+
+
+template <typename FunctionPtrType, FunctionPtrType FunctionPtr, typename ReturnType, size_t ParameterCount, typename ParameterTypeTuple, typename Class>
+PyObject* python_embedder_detail::MemberDispatcher<FunctionPtrType, FunctionPtr, ReturnType, ParameterCount, ParameterTypeTuple, Class>::ReplicatedFunction(PyObject* self, PyObject* args)
+{
+	ParameterTypeTuple arguments;
+
+	bool parseResult = true;
+	boost::mp11::mp_for_each<boost::mp11::mp_iota_c<ParameterCount - 1>>([&](auto i)
+		{
+			using NthParameterType = std::tuple_element_t<i, ParameterTypeTuple>;
+
+			static_assert(std::is_default_constructible_v<NthParameterType>);
+			static_assert(std::is_move_assignable_v<NthParameterType>);
+
+			PyObject* const pyObjectValue = PyTuple_GetItem(args, i);
+			TempVarType<NthParameterType> value;
+
+			if constexpr (std::is_fundamental_v<NthParameterType> || std::is_same_v<NthParameterType, const char*>)
+			{
+				const char* format = get_argument_type_format_string<NthParameterType>();
+
+				if (!PyArg_Parse(pyObjectValue, format, &value))
+				{
+					parseResult = false;
+					return;
+				}
+			}
+			else if constexpr (std::is_same_v<NthParameterType, std::string>)
+			{
+				const char* temp;
+				if (!PyArg_Parse(pyObjectValue, "s", &temp))
+				{
+					parseResult = false;
+					return;
+				}
+
+				value = temp;
+			}
+			else
+			{
+				if (!PyArg_Parse(pyObjectValue, "O&", &Converter<NthParameterType>::ParseValue, &value))
+				{
+					parseResult = false;
+					return;
+				}
+			}
+
+			std::get<i>(arguments) = std::move(static_cast<NthParameterType>(value));
+		}
+	);
+
+	if (!parseResult)
+	{
+		return nullptr;
+	}
+
+	Class instance;
+	Converter<Class>::ParseValue(self, &instance);
+
+	auto thisPtrAddedArguments = std::tuple_cat(std::make_tuple(&instance), arguments);
 
 	PyObject* toReturn;
 	if constexpr (std::is_same_v<ReturnType, void>)
@@ -720,7 +822,7 @@ void Exporter<ModuleNameHashValue>::RegisterFunction(const char* functionName)
 
 template <unsigned long long ModuleNameHashValue>
 template <typename FunctionPtrType, FunctionPtrType FunctionPtr, typename InstanceReturnFunctionType, InstanceReturnFunctionType InstanceReturnFunction>
-void Exporter<ModuleNameHashValue>::RegisterMemberFunction(const char* functionName)
+void Exporter<ModuleNameHashValue>::RegisterMemberFunctionAsStaticFunction(const char* functionName)
 {
 	using namespace boost::function_types;
 
@@ -735,10 +837,34 @@ void Exporter<ModuleNameHashValue>::RegisterMemberFunction(const char* functionN
 	using InstanceReturnerReturnType = typename result_type<InstanceReturnFunctionType>::type;
 	using InstanceReturnerParameterTypeTuple = python_embedder_detail::ParameterTuple<parameter_types<InstanceReturnFunctionType>, instanceReturnerParameterCount>;
 
-	using InstantiatedDispatcher = python_embedder_detail::MemberDispatcher<FunctionPtrType, FunctionPtr, ReturnType, parameterCount, ParameterTypeTuple,
+	using InstantiatedDispatcher = python_embedder_detail::MemberAsStaticDispatcher<FunctionPtrType, FunctionPtr, ReturnType, parameterCount, ParameterTypeTuple,
 		InstanceReturnFunctionType, InstanceReturnFunction, InstanceReturnerReturnType, instanceReturnerParameterCount, InstanceReturnerParameterTypeTuple>;
 
 	methods.push_back(PyMethodDef{ functionName, &InstantiatedDispatcher::ReplicatedFunction, METH_VARARGS, nullptr });
+}
+
+
+template <unsigned long long ModuleNameHashValue>
+template <typename FunctionPtrType, FunctionPtrType FunctionPtr, typename Class>
+void Exporter<ModuleNameHashValue>::RegisterMemberFunction(const char* functionName)
+{
+	using namespace boost::function_types;
+
+	static_assert(is_member_function_pointer<FunctionPtrType>::value);
+
+	constexpr size_t parameterCount = function_arity<FunctionPtrType>::value;
+	using ReturnType = typename result_type<FunctionPtrType>::type;
+	using ParameterTypeTuple = python_embedder_detail::TailsParameterTuple<parameter_types<FunctionPtrType>, parameterCount>;
+
+	using InstantiatedDispatcher = python_embedder_detail::MemberDispatcher<FunctionPtrType, FunctionPtr, ReturnType, parameterCount, ParameterTypeTuple, Class>;
+
+	python_embedder_detail::PyExportedClass<Class>::methods.push_back(PyMethodDef{
+		functionName,
+		&InstantiatedDispatcher::ReplicatedFunction,
+		METH_VARARGS,
+		nullptr
+		}
+	);
 }
 
 
@@ -749,6 +875,7 @@ void Exporter<ModuleNameHashValue>::RegisterType(const char* typeName, std::init
 	using PyExportedType = python_embedder_detail::PyExportedClass<T>;
 
 	PyExportedType::fields = members;
+	PyExportedType::methods.push_back(PyMethodDef{ nullptr, nullptr, 0, nullptr });
 	
 	PyTypeObject typeObject{ PyVarObject_HEAD_INIT(nullptr, 0) };
 	typeObject.tp_name = typeName;
@@ -759,6 +886,7 @@ void Exporter<ModuleNameHashValue>::RegisterType(const char* typeName, std::init
 	typeObject.tp_init = &PyExportedType::template CustomInit<Offsets, FieldTypes...>;
 	typeObject.tp_dealloc = &PyExportedType::CustomDealloc;
 	typeObject.tp_members = PyExportedType::fields.data();
+	typeObject.tp_methods = PyExportedType::methods.data();
 
 	PyExportedType::typeInfo = typeObject;
 	types.push_back(typeObject);
