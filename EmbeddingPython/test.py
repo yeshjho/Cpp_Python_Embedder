@@ -9,8 +9,8 @@ vec = test.Vec('would this work?', 20, 30)
 
 test.f(vec)
 
-#result = test.g(30)
+result = test.g(30)
 test.i(vec.x)
 test.h(vec.y)
 test.h(vec.z)
-#test.f(result)
+test.f(result)

@@ -96,10 +96,10 @@ void f(Vec v)
 	std::cout << v.x << " " << v.y << " " << v.z << std::endl;
 }
 
-//Vec g(float i)
-//{
-//	return Vec{ true, i * 200.f, int(i * 300) };
-//}
+Vec g(float i)
+{
+	return Vec{ "default string", i * 200, int(i * 300) };
+}
 
 void h(float f)
 {
@@ -131,7 +131,7 @@ int main()
 	PY_EXPORT_TYPE(Vec, test, (x)(y)(z));
 
 	PY_EXPORT_GLOBAL_FUNCTION(f, test);
-	//PY_EXPORT_GLOBAL_FUNCTION(g, test);
+	PY_EXPORT_GLOBAL_FUNCTION(g, test);
 	PY_EXPORT_GLOBAL_FUNCTION(h, test);
 	PY_EXPORT_GLOBAL_FUNCTION(i, test);
 	

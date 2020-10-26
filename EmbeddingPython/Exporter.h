@@ -59,6 +59,9 @@ using xxhash::literals::operator ""_xxh64;
 // TODO: Support Lambda https://qiita.com/angeart/items/94734d68999eca575881
 
 
+// TODO: Export method of already exported class
+
+
 
 // TODO: Memory Leak (INCREF, DECREF) https://docs.python.org/3/c-api/intro.html#objects-types-and-reference-counts
 // http://edcjones.tripod.com/refcount.html
@@ -284,8 +287,6 @@ int python_embedder_detail::PyExportedClass<T, _>::CustomInit(PyObject* self_, P
 		return -1;
 	}
 
-	
-
 	return 0;
 }
 
@@ -295,6 +296,7 @@ void python_embedder_detail::PyExportedClass<T, _>::CustomDealloc(PyObject* self
 {
 	Py_TYPE(self)->tp_free(self);
 }
+
 
 
 template <typename T>
@@ -309,93 +311,13 @@ int python_embedder_detail::Converter<T>::ParseValue(PyObject* pyObject, T* pT)
 template <typename T>
 PyObject* python_embedder_detail::Converter<T>::BuildValue(T* pT)
 {
-	PyExportedClass<T> value{};
-	value.t = *pT;
+	PyExportedClass<T>* const toReturn = PyObject_New(PyExportedClass<T>, &PyExportedClass<T>::typeInfo);
+	PyObject* const object = reinterpret_cast<PyObject*>(toReturn);
 	
-	const size_t SIZE = PyExportedClass<T>::fields.size();
+	PyObject_Init(object, &PyExportedClass<T>::typeInfo);
+	toReturn->t = *pT;
 
-	PyObject* const args = PyTuple_New(SIZE);
-	
-	for (size_t i = 0; i < SIZE; ++i)
-	{
-		const PyMemberDef& def = PyExportedClass<T>::fields.at(i);
-
-		const Py_ssize_t offset = def.offset;
-
-		void* const address = reinterpret_cast<char*>(&(value.t)) + offset;
-		PyObject* argument = nullptr;
-		switch (def.type)
-		{
-			case T_BOOL:
-				argument = Py_BuildValue("p", *reinterpret_cast<bool*>(address));
-				break;
-			
-			case T_BYTE:
-				argument = Py_BuildValue("C", *reinterpret_cast<char*>(address));
-				break;
-
-			case T_UBYTE:
-				argument = Py_BuildValue("B", *reinterpret_cast<unsigned char*>(address));
-				break;
-
-			case T_SHORT:
-				argument = Py_BuildValue("h", *reinterpret_cast<short*>(address));
-				break;
-
-			case T_USHORT:
-				argument = Py_BuildValue("H", *reinterpret_cast<unsigned short*>(address));
-				break;
-
-			case T_INT:
-				argument = Py_BuildValue("i", *reinterpret_cast<int*>(address));
-				break;
-
-			case T_UINT:
-				argument = Py_BuildValue("I", *reinterpret_cast<unsigned int*>(address));
-				break;
-
-			case T_LONG:
-				argument = Py_BuildValue("l", *reinterpret_cast<long*>(address));
-				break;
-
-			case T_ULONG:
-				argument = Py_BuildValue("k", *reinterpret_cast<unsigned long*>(address));
-				break;
-
-			case T_LONGLONG:
-				argument = Py_BuildValue("L", *reinterpret_cast<long long*>(address));
-				break;
-
-			case T_ULONGLONG:
-				argument = Py_BuildValue("K", *reinterpret_cast<unsigned long long*>(address));
-				break;
-
-			case T_FLOAT:
-				argument = Py_BuildValue("f", *reinterpret_cast<float*>(address));
-				break;
-
-			case T_DOUBLE:
-				argument = Py_BuildValue("d", *reinterpret_cast<double*>(address));
-				break;
-
-			case T_STRING:
-				argument = Py_BuildValue("s", *reinterpret_cast<const char**>(address));
-				break;
-
-			default:
-				_ASSERT(false);
-				break;
-		}
-		PyTuple_SetItem(args, i, argument);
-		//Py_DECREF(argument);
-	}
-
-	PyObject* const typeObject = reinterpret_cast<PyObject*>(&PyExportedClass<T>::typeInfo);
-	PyObject* toReturn = PyObject_CallObject(typeObject, args);
-	
-	Py_DECREF(args);
-
-	return toReturn;
+	return object;
 }
 
 
