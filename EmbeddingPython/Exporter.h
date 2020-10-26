@@ -21,6 +21,8 @@
 #include <boost/function_types/result_type.hpp>
 
 #include <boost/preprocessor/seq/for_each.hpp>
+#include <boost/preprocessor/seq/pop_back.hpp>
+#include <boost/preprocessor/seq/reverse.hpp>
 
 #include <xxhash_cx/xxhash_cx.h>
 
@@ -28,15 +30,26 @@
 using xxhash::literals::operator ""_xxh64;
 
 
-#define PY_EXPORTER_MEMBER(T, memberName) { #memberName, python_embedder_detail::get_member_type_number<decltype(T::memberName)>(), offsetof(python_embedder_detail::PyExportedClass<T>, t) + offsetof(T, memberName), 0, nullptr },
-#define PY_EXPORTER_EXPANDER(r, T, memberName) PY_EXPORTER_MEMBER(T, memberName)
-#define PY_EXPORTER_MEMBERS(T, ...) BOOST_PP_SEQ_FOR_EACH(PY_EXPORTER_EXPANDER, T, __VA_ARGS__) { nullptr }
+#define PY_EXPORTER_FIELD(T, memberName) { #memberName, python_embedder_detail::get_member_type_number<decltype(T::##memberName)>(), offsetof(python_embedder_detail::PyExportedClass<T>, t) + offsetof(T, memberName), 0, nullptr },
+#define PY_EXPORTER_FIELD_EXPANDER(_, T, memberName) PY_EXPORTER_FIELD(T, memberName)
+#define PY_EXPORTER_FIELDS(T, seq) BOOST_PP_SEQ_FOR_EACH(PY_EXPORTER_FIELD_EXPANDER, T, seq) { nullptr, 0, 0, 0, nullptr }
+
+#define PY_EXPORTER_FIELD_TYPE(T, memberName) decltype(T::memberName),
+#define PY_EXPORTER_FIELD_TYPE_EXPANDER(_, T, memberName) PY_EXPORTER_FIELD_TYPE(T, memberName)
+#define PY_EXPORTER_HEADS_FIELD_TYPES(T, seq) BOOST_PP_SEQ_FOR_EACH(PY_EXPORTER_FIELD_TYPE_EXPANDER, T, seq)
+#define PY_EXPORTER_FIELD_TYPES(T, seq) PY_EXPORTER_HEADS_FIELD_TYPES(T, BOOST_PP_SEQ_POP_BACK(seq)) decltype(T::BOOST_PP_SEQ_HEAD(BOOST_PP_SEQ_REVERSE(seq)))
+
+#define PY_EXPORTER_FIELD_OFFSET(T, memberName) offsetof(T, memberName),
+#define PY_EXPORTER_FIELD_OFFSET_EXPANDER(_, T, memberName) PY_EXPORTER_FIELD_OFFSET(T, memberName)
+#define PY_EXPORTER_HEADS_FIELD_OFFSETS(T, seq) BOOST_PP_SEQ_FOR_EACH(PY_EXPORTER_FIELD_OFFSET_EXPANDER, T, seq)
+#define PY_EXPORTER_FIELD_OFFSETS(T, seq) PY_EXPORTER_HEADS_FIELD_OFFSETS(T, BOOST_PP_SEQ_POP_BACK(seq)) offsetof(T, BOOST_PP_SEQ_HEAD(BOOST_PP_SEQ_REVERSE(seq)))
+
 
 #define PY_EXPORT_STATIC_FUNCTION(func, funcName, moduleName) Exporter<#moduleName##_xxh64>::RegisterFunction<decltype(&##func), &##func>(#funcName)
 #define PY_EXPORT_GLOBAL_FUNCTION(funcName, moduleName) PY_EXPORT_STATIC_FUNCTION(funcName, funcName, moduleName);
 #define PY_EXPORT_MEMBER_FUNCTION(func, funcName, instanceReturner, moduleName) Exporter<#moduleName##_xxh64>::RegisterMemberFunction<decltype(&##func), &##func, decltype(&##instanceReturner), &##instanceReturner>(#funcName)
 
-#define PY_EXPORT_TYPE(T, moduleName, ...) Exporter<#moduleName##_xxh64>::RegisterType<T>(#T, { PY_EXPORTER_MEMBERS(T, __VA_ARGS__) })
+#define PY_EXPORT_TYPE(T, moduleName, seq) Exporter<#moduleName##_xxh64>::RegisterType<T, std::integer_sequence<size_t, PY_EXPORTER_FIELD_OFFSETS(T, seq)>, PY_EXPORTER_FIELD_TYPES(T, seq)>(#T, { PY_EXPORTER_FIELDS(T, seq) })
 
 #define PY_EXPORT_MODULE(moduleName) Exporter<#moduleName##_xxh64>::Export(#moduleName)
 
@@ -47,33 +60,8 @@ using xxhash::literals::operator ""_xxh64;
 
 
 
-// TODO: Memory Leak (INCREF, DECREF)
-// TODO: Define some macros for easy register
-
-
-// TODO: Let the user define these easily
-template<typename T, typename = void>
-class Converter;
-
-
-template<typename T>
-class Converter<T, std::enable_if_t<std::is_trivially_copyable_v<T>>>
-{
-public:
-	// TODO: implement
-	static int ParseValue(PyObject* pyObject, T* pT)
-	{
-		*pT = *reinterpret_cast<T*>(Py_TYPE(pyObject));
-
-		return 1;
-	}
-
-	static PyObject* BuildValue(T* t)
-	{
-
-	}
-};
-
+// TODO: Memory Leak (INCREF, DECREF) https://docs.python.org/3/c-api/intro.html#objects-types-and-reference-counts
+// http://edcjones.tripod.com/refcount.html
 
 
 namespace python_embedder_detail
@@ -85,12 +73,26 @@ namespace python_embedder_detail
 	template<typename ParameterTypes, size_t ParameterCount>
 	using ParameterTuple = decltype(get_parameter_tuple_helper(std::declval<ParameterTypes>(), std::make_index_sequence<ParameterCount>()));
 
+	
 	template<typename FirstParameterType, typename... ParameterTypes>
 	std::tuple<ParameterTypes...> get_tails_parameter_tuple_helper(std::tuple<FirstParameterType, ParameterTypes...>);
 
 	template<typename ParameterTypes, size_t ParameterCount>
 	using TailsParameterTuple = decltype(get_tails_parameter_tuple_helper(std::declval<ParameterTuple<ParameterTypes, ParameterCount>>()));
-	
+
+
+	template<typename... Args>
+	using FieldTuple = std::tuple<Args...>;
+
+
+
+	template<typename T, T... Numbers>
+	constexpr T get_nth_element(std::integer_sequence<T, Numbers...>, T i)
+	{
+		constexpr T arr[] = { Numbers... };
+		return arr[i];
+	}
+
 
 	
 	template<typename ParameterType, typename = void>
@@ -110,28 +112,43 @@ namespace python_embedder_detail
 
 
 
-	template<typename T, typename = std::enable_if_t<std::is_default_constructible_v<T>>>
+	template<typename T, typename = std::enable_if_t<std::is_trivially_copyable_v<T>&& std::is_default_constructible_v<T>>>
 	struct PyExportedClass
 	{
 		PyObject_HEAD
 		T t;
 
-		
-		inline static std::vector<PyMemberDef> members;
 
-		// TODO: implement
+		inline static PyTypeObject typeInfo;
+		inline static std::vector<PyMemberDef> fields;
+
+		
 		static PyObject* CustomNew(PyTypeObject* type, PyObject* args, PyObject* keywords);
-		static int CustomInit(PyObject* self, PyObject* args, PyObject* keywords);
+		
+		template<typename Offsets, typename... FieldTypes>
+		static int CustomInit(PyObject* self_, PyObject* args, PyObject* keywords);
+		
 		static void CustomDealloc(PyObject* self);
+	};
+
+
+	
+	template<typename T>
+	class Converter
+	{
+	public:
+		static int ParseValue(PyObject* pyObject, T* pT);
+
+		static PyObject* BuildValue(T* pT);
 	};
 	
 
 
 	template<typename T>
-	[[nodiscard]] static constexpr const char* get_fundamental_format_string() noexcept;
+	[[nodiscard]] static constexpr const char* get_argument_type_format_string(bool treatCharAsNumber = false);
 
 	template<typename T>
-	[[nodiscard]] static constexpr int get_member_type_number() noexcept;
+	[[nodiscard]] static constexpr int get_member_type_number();
 
 	
 
@@ -167,7 +184,7 @@ public:
 	static void RegisterMemberFunction(const char* functionName);
 
 
-	template<typename T>
+	template<typename T, typename Offsets, typename... FieldTypes>
 	static void RegisterType(const char* typeName, std::initializer_list<PyMemberDef> members);
 
 
@@ -218,6 +235,170 @@ private:
 
 
 
+template <typename T, typename _>
+PyObject* python_embedder_detail::PyExportedClass<T, _>::CustomNew(PyTypeObject* type, [[maybe_unused]] PyObject* args, [[maybe_unused]] PyObject* keywords)
+{
+	PyExportedClass* const self = reinterpret_cast<PyExportedClass*>(type->tp_alloc(type, 0));
+
+	self->t = T{};
+
+	return reinterpret_cast<PyObject*>(self);
+}
+
+
+template <typename T, typename _>
+template <typename Offsets, typename ... FieldTypes>
+int python_embedder_detail::PyExportedClass<T, _>::CustomInit(PyObject* self_, PyObject* args, [[maybe_unused]] PyObject* keywords)
+{
+	PyExportedClass* const self = reinterpret_cast<PyExportedClass*>(self_);
+
+	using FieldTypeTuple = FieldTuple<FieldTypes...>;
+	constexpr size_t fieldCount = std::tuple_size_v<FieldTypeTuple>;
+
+	bool parseResult = true;
+	boost::mp11::mp_for_each<boost::mp11::mp_iota_c<fieldCount>>([&](auto i)
+		{
+			using NthFieldType = std::tuple_element_t<i, FieldTypeTuple>;
+
+			static_assert(std::is_default_constructible_v<NthFieldType>);
+			static_assert(std::is_move_assignable_v<NthFieldType>);
+			static_assert(std::is_fundamental_v<NthFieldType> || std::is_same_v<NthFieldType, const char*>);
+
+			PyObject* const pyObjectValue = PyTuple_GetItem(args, i);
+			TempVarType<NthFieldType> value;
+
+			const char* format = get_argument_type_format_string<NthFieldType>(true);
+
+			if (!PyArg_Parse(pyObjectValue, format, &value))
+			{
+				parseResult = false;
+				return;
+			}
+
+			new (reinterpret_cast<char*>(&(self->t)) + get_nth_element<size_t>(Offsets{}, i)) NthFieldType(static_cast<NthFieldType>(value));
+		}
+	);
+
+	if (!parseResult)
+	{
+		return -1;
+	}
+
+	
+
+	return 0;
+}
+
+
+template <typename T, typename _>
+void python_embedder_detail::PyExportedClass<T, _>::CustomDealloc(PyObject* self)
+{
+	Py_TYPE(self)->tp_free(self);
+}
+
+
+template <typename T>
+int python_embedder_detail::Converter<T>::ParseValue(PyObject* pyObject, T* pT)
+{
+	new (pT) T{ reinterpret_cast<PyExportedClass<T>*>(pyObject)->t };
+
+	return 1;
+}
+
+
+template <typename T>
+PyObject* python_embedder_detail::Converter<T>::BuildValue(T* pT)
+{
+	PyExportedClass<T> value{};
+	value.t = *pT;
+	
+	const size_t SIZE = PyExportedClass<T>::fields.size();
+
+	PyObject* const args = PyTuple_New(SIZE);
+	
+	for (size_t i = 0; i < SIZE; ++i)
+	{
+		const PyMemberDef& def = PyExportedClass<T>::fields.at(i);
+
+		const Py_ssize_t offset = def.offset;
+
+		void* const address = reinterpret_cast<char*>(&(value.t)) + offset;
+		PyObject* argument = nullptr;
+		switch (def.type)
+		{
+			case T_BOOL:
+				argument = Py_BuildValue("p", *reinterpret_cast<bool*>(address));
+				break;
+			
+			case T_BYTE:
+				argument = Py_BuildValue("C", *reinterpret_cast<char*>(address));
+				break;
+
+			case T_UBYTE:
+				argument = Py_BuildValue("B", *reinterpret_cast<unsigned char*>(address));
+				break;
+
+			case T_SHORT:
+				argument = Py_BuildValue("h", *reinterpret_cast<short*>(address));
+				break;
+
+			case T_USHORT:
+				argument = Py_BuildValue("H", *reinterpret_cast<unsigned short*>(address));
+				break;
+
+			case T_INT:
+				argument = Py_BuildValue("i", *reinterpret_cast<int*>(address));
+				break;
+
+			case T_UINT:
+				argument = Py_BuildValue("I", *reinterpret_cast<unsigned int*>(address));
+				break;
+
+			case T_LONG:
+				argument = Py_BuildValue("l", *reinterpret_cast<long*>(address));
+				break;
+
+			case T_ULONG:
+				argument = Py_BuildValue("k", *reinterpret_cast<unsigned long*>(address));
+				break;
+
+			case T_LONGLONG:
+				argument = Py_BuildValue("L", *reinterpret_cast<long long*>(address));
+				break;
+
+			case T_ULONGLONG:
+				argument = Py_BuildValue("K", *reinterpret_cast<unsigned long long*>(address));
+				break;
+
+			case T_FLOAT:
+				argument = Py_BuildValue("f", *reinterpret_cast<float*>(address));
+				break;
+
+			case T_DOUBLE:
+				argument = Py_BuildValue("d", *reinterpret_cast<double*>(address));
+				break;
+
+			case T_STRING:
+				argument = Py_BuildValue("s", *reinterpret_cast<const char**>(address));
+				break;
+
+			default:
+				_ASSERT(false);
+				break;
+		}
+		PyTuple_SetItem(args, i, argument);
+		//Py_DECREF(argument);
+	}
+
+	PyObject* const typeObject = reinterpret_cast<PyObject*>(&PyExportedClass<T>::typeInfo);
+	PyObject* toReturn = PyObject_CallObject(typeObject, args);
+	
+	Py_DECREF(args);
+
+	return toReturn;
+}
+
+
 template <typename FunctionPtrType, FunctionPtrType FunctionPtr, typename ReturnType, size_t ParameterCount, typename ParameterTypeTuple>
 PyObject* python_embedder_detail::Dispatcher<FunctionPtrType, FunctionPtr, ReturnType, ParameterCount, ParameterTypeTuple>::ReplicatedFunction([[maybe_unused]] PyObject* self, PyObject* args)
 {
@@ -234,19 +415,11 @@ PyObject* python_embedder_detail::Dispatcher<FunctionPtrType, FunctionPtr, Retur
 			PyObject* const pyObjectValue = PyTuple_GetItem(args, i);
 			TempVarType<NthParameterType> value;
 
-			if constexpr (std::is_fundamental_v<NthParameterType>)
+			if constexpr (std::is_fundamental_v<NthParameterType> || std::is_same_v<NthParameterType, const char*>)
 			{
-				const char* format = get_fundamental_format_string<NthParameterType>();
+				const char* format = get_argument_type_format_string<NthParameterType>();
 
 				if (!PyArg_Parse(pyObjectValue, format, &value))
-				{
-					parseResult = false;
-					return;
-				}
-			}
-			else if constexpr (std::is_same_v<NthParameterType, const char*>)
-			{
-				if (!PyArg_Parse(pyObjectValue, "s", &value))
 				{
 					parseResult = false;
 					return;
@@ -292,15 +465,11 @@ PyObject* python_embedder_detail::Dispatcher<FunctionPtrType, FunctionPtr, Retur
 	{
 		ReturnType returnValue = std::apply(FunctionPtr, arguments);
 
-		if constexpr (std::is_fundamental_v<ReturnType>)
+		if constexpr (std::is_fundamental_v<ReturnType> || std::is_same_v<ReturnType, const char*>)
 		{
-			const char* format = get_fundamental_format_string<ReturnType>();
+			const char* format = get_argument_type_format_string<ReturnType>();
 
 			toReturn = Py_BuildValue(format, returnValue);
-		}
-		else if constexpr (std::is_same_v<ReturnType, const char*>)
-		{
-			toReturn = Py_BuildValue("s", returnValue);
 		}
 		else if constexpr (std::is_same_v<ReturnType, std::string>)
 		{
@@ -336,19 +505,11 @@ PyObject* python_embedder_detail::MemberDispatcher<FunctionPtrType, FunctionPtr,
 			PyObject* const pyObjectValue = PyTuple_GetItem(instanceReturnFunctionArgs, i);
 			TempVarType<NthParameterType> value;
 
-			if constexpr (std::is_fundamental_v<NthParameterType>)
+			if constexpr (std::is_fundamental_v<NthParameterType> || std::is_same_v<NthParameterType, const char*>)
 			{
-				const char* format = get_fundamental_format_string<NthParameterType>();
+				const char* format = get_argument_type_format_string<NthParameterType>();
 
 				if (!PyArg_Parse(pyObjectValue, format, &value))
-				{
-					parseResult = false;
-					return;
-				}
-			}
-			else if constexpr (std::is_same_v<NthParameterType, const char*>)
-			{
-				if (!PyArg_Parse(pyObjectValue, "s", &value))
 				{
 					parseResult = false;
 					return;
@@ -400,19 +561,11 @@ PyObject* python_embedder_detail::MemberDispatcher<FunctionPtrType, FunctionPtr,
 			PyObject* const pyObjectValue = PyTuple_GetItem(realArgs, i);
 			TempVarType<NthParameterType> value;
 
-			if constexpr (std::is_fundamental_v<NthParameterType>)
+			if constexpr (std::is_fundamental_v<NthParameterType> || std::is_same_v<NthParameterType, const char*>)
 			{
-				const char* format = get_fundamental_format_string<NthParameterType>();
+				const char* format = get_argument_type_format_string<NthParameterType>();
 
 				if (!PyArg_Parse(pyObjectValue, format, &value))
-				{
-					parseResult = false;
-					return;
-				}
-			}
-			else if constexpr (std::is_same_v<NthParameterType, const char*>)
-			{
-				if (!PyArg_Parse(pyObjectValue, "s", &value))
 				{
 					parseResult = false;
 					return;
@@ -462,15 +615,11 @@ PyObject* python_embedder_detail::MemberDispatcher<FunctionPtrType, FunctionPtr,
 	{
 		ReturnType returnValue = std::apply(FunctionPtr, thisPtrAddedArguments);
 
-		if constexpr (std::is_fundamental_v<ReturnType>)
+		if constexpr (std::is_fundamental_v<ReturnType> || std::is_same_v<ReturnType, const char*>)
 		{
-			const char* format = get_fundamental_format_string<ReturnType>();
+			const char* format = get_argument_type_format_string<ReturnType>();
 
 			toReturn = Py_BuildValue(format, returnValue);
-		}
-		else if constexpr (std::is_same_v<ReturnType, const char*>)
-		{
-			toReturn = Py_BuildValue("s", returnValue);
 		}
 		else if constexpr (std::is_same_v<ReturnType, std::string>)
 		{
@@ -489,10 +638,8 @@ PyObject* python_embedder_detail::MemberDispatcher<FunctionPtrType, FunctionPtr,
 
 
 template <typename T>
-constexpr const char* python_embedder_detail::get_fundamental_format_string() noexcept
+constexpr const char* python_embedder_detail::get_argument_type_format_string(const bool treatCharAsNumber)
 {
-	static_assert(std::is_fundamental_v<T>);
-
 	if constexpr (std::is_same_v<T, bool>)
 	{
 		return "p";
@@ -500,7 +647,7 @@ constexpr const char* python_embedder_detail::get_fundamental_format_string() no
 	// Need an assumption that the argument will never be a number, rather a string with single character
 	else if constexpr (std::is_same_v<T, char>)
 	{
-		return "C";
+		return treatCharAsNumber ? "B" : "C";
 	}
 	else if constexpr (std::is_same_v<T, unsigned char>)
 	{
@@ -547,8 +694,13 @@ constexpr const char* python_embedder_detail::get_fundamental_format_string() no
 		return "d";
 	}
 	/// long double is not supported by python API
+	else if constexpr (std::is_same_v<T, const char*>)
+	{
+		return "s";
+	}
 	else
 	{
+		_ASSERT(false);
 		return nullptr;
 	}
 }
@@ -556,7 +708,7 @@ constexpr const char* python_embedder_detail::get_fundamental_format_string() no
 
 
 template <typename T>
-constexpr int python_embedder_detail::get_member_type_number() noexcept
+constexpr int python_embedder_detail::get_member_type_number()
 {
 	if constexpr (std::is_same_v<T, bool>)
 	{
@@ -669,12 +821,12 @@ void Exporter<ModuleNameHashValue>::RegisterMemberFunction(const char* functionN
 
 
 template <unsigned long long ModuleNameHashValue>
-template <typename T>
+template <typename T, typename Offsets, typename... FieldTypes>
 void Exporter<ModuleNameHashValue>::RegisterType(const char* typeName, std::initializer_list<PyMemberDef> members)
 {
 	using PyExportedType = python_embedder_detail::PyExportedClass<T>;
 
-	PyExportedType::members = members;
+	PyExportedType::fields = members;
 	
 	PyTypeObject typeObject{ PyVarObject_HEAD_INIT(nullptr, 0) };
 	typeObject.tp_name = typeName;
@@ -682,9 +834,10 @@ void Exporter<ModuleNameHashValue>::RegisterType(const char* typeName, std::init
 	typeObject.tp_itemsize = 0;
 	typeObject.tp_flags = Py_TPFLAGS_DEFAULT;
 	typeObject.tp_new = &PyExportedType::CustomNew;
-	typeObject.tp_init = &PyExportedType::CustomInit;
+	typeObject.tp_init = &PyExportedType::template CustomInit<Offsets, FieldTypes...>;
 	typeObject.tp_dealloc = &PyExportedType::CustomDealloc;
-	typeObject.tp_members = PyExportedType::members.data();
+	typeObject.tp_members = PyExportedType::fields.data();
 
+	PyExportedType::typeInfo = typeObject;
 	types.push_back(typeObject);
 }

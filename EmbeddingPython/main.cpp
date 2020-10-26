@@ -82,6 +82,36 @@ C* instance_returner(int i)
 	return &c;
 }
 
+
+struct Vec
+{
+	const char* x;
+	double y;
+	int z;
+};
+
+
+void f(Vec v)
+{
+	std::cout << v.x << " " << v.y << " " << v.z << std::endl;
+}
+
+//Vec g(float i)
+//{
+//	return Vec{ true, i * 200.f, int(i * 300) };
+//}
+
+void h(float f)
+{
+	std::cout << f << std::endl;
+}
+
+void i(const char* c)
+{
+	std::cout << c << std::endl;
+}
+
+
 int main()
 {
 	// https://docs.python.org/3/extending/extending.html
@@ -97,8 +127,13 @@ int main()
 	PY_EXPORT_GLOBAL_FUNCTION(crazy_function, test);
 	PY_EXPORT_STATIC_FUNCTION(C::Print, Print, test);
 	PY_EXPORT_MEMBER_FUNCTION(C::Print2, Print2, instance_returner, test);
+	
+	PY_EXPORT_TYPE(Vec, test, (x)(y)(z));
 
-	PY_EXPORT_TYPE(C, test, (i)(j));
+	PY_EXPORT_GLOBAL_FUNCTION(f, test);
+	//PY_EXPORT_GLOBAL_FUNCTION(g, test);
+	PY_EXPORT_GLOBAL_FUNCTION(h, test);
+	PY_EXPORT_GLOBAL_FUNCTION(i, test);
 	
 	PY_EXPORT_MODULE(test);
 	
