@@ -125,10 +125,10 @@ int main()
 
 	PY_EXPORT_GLOBAL_FUNCTION(add_5, test);
 	PY_EXPORT_GLOBAL_FUNCTION(crazy_function, test);
-	PY_EXPORT_STATIC_FUNCTION(C::Print, Print, test);
-	PY_EXPORT_MEMBER_FUNCTION_AS_STATIC_FUNCTION(C::Print2, Print2, instance_returner, test);
+	PY_EXPORT_STATIC_FUNCTION(C, Print, test);
+	PY_EXPORT_MEMBER_FUNCTION_AS_STATIC_FUNCTION(C, Print2, instance_returner, test);
 
-	PY_EXPORT_MEMBER_FUNCTION(Vec, Vec::add, add, test);
+	PY_EXPORT_MEMBER_FUNCTION(Vec, add, test);
 	PY_EXPORT_TYPE(Vec, test, (x)(y)(z));
 
 	PY_EXPORT_GLOBAL_FUNCTION(f, test);
