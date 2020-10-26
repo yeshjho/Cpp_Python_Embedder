@@ -75,10 +75,14 @@ using xxhash::literals::operator ""_xxh64;
 #define PY_EXPORTER_FIELD_OFFSETS(T, seq) PY_EXPORTER_HEADS_FIELD_OFFSETS(T, BOOST_PP_SEQ_POP_BACK(seq)) offsetof(T, BOOST_PP_SEQ_HEAD(BOOST_PP_SEQ_REVERSE(seq)))
 
 
-#define PY_EXPORT_STATIC_FUNCTION(T, funcName, moduleName) Exporter<#moduleName##_xxh64>::RegisterFunction<decltype(&##T##::##funcName), &##T##::##funcName>(#funcName)
-#define PY_EXPORT_GLOBAL_FUNCTION(func, moduleName) Exporter<#moduleName##_xxh64>::RegisterFunction<decltype(&##func), &##func>(#func)
-#define PY_EXPORT_MEMBER_FUNCTION_AS_STATIC_FUNCTION(T, funcName, instanceReturner, moduleName) Exporter<#moduleName##_xxh64>::RegisterMemberFunctionAsStaticFunction<decltype(&##T##::##funcName), &##T##::##funcName, decltype(&##instanceReturner), &##instanceReturner>(#funcName)
-#define PY_EXPORT_MEMBER_FUNCTION(T, funcName, moduleName) Exporter<#moduleName##_xxh64>::RegisterMemberFunction<decltype(&##T##::##funcName), &##T##::##funcName, T>(#funcName)
+#define PY_EXPORT_STATIC_FUNCTION_NAME(T, func, funcName, moduleName) Exporter<#moduleName##_xxh64>::RegisterFunction<decltype(&##T##::##func), &##T##::##func>(#funcName)
+#define PY_EXPORT_STATIC_FUNCTION(T, func, moduleName) PY_EXPORT_STATIC_FUNCTION_NAME(T, func, func, moduleName)
+#define PY_EXPORT_GLOBAL_FUNCTION_NAME(func, funcName, moduleName) Exporter<#moduleName##_xxh64>::RegisterFunction<decltype(&##func), &##func>(#funcName)
+#define PY_EXPORT_GLOBAL_FUNCTION(func, moduleName) PY_EXPORT_GLOBAL_FUNCTION_NAME(func, func, moduleName)
+#define PY_EXPORT_MEMBER_FUNCTION_AS_STATIC_FUNCTION_NAME(T, func, funcName, instanceReturner, moduleName) Exporter<#moduleName##_xxh64>::RegisterMemberFunctionAsStaticFunction<decltype(&##T##::##func), &##T##::##func, decltype(&##instanceReturner), &##instanceReturner>(#funcName)
+#define PY_EXPORT_MEMBER_FUNCTION_AS_STATIC_FUNCTION(T, func, instanceReturner, moduleName) PY_EXPORT_MEMBER_FUNCTION_AS_STATIC_FUNCTION_NAME(T, func, func, instanceReturner, moduleName)
+#define PY_EXPORT_MEMBER_FUNCTION_NAME(T, func, funcName, moduleName) Exporter<#moduleName##_xxh64>::RegisterMemberFunction<decltype(&##T##::##func), &##T##::##func, T>(#funcName)
+#define PY_EXPORT_MEMBER_FUNCTION(T, func, moduleName) PY_EXPORT_MEMBER_FUNCTION_NAME(T, func, func, moduleName)
 
 #define PY_EXPORT_TYPE(T, moduleName, seq) Exporter<#moduleName##_xxh64>::RegisterType<T, std::integer_sequence<size_t, PY_EXPORTER_FIELD_OFFSETS(T, seq)>, PY_EXPORTER_FIELD_TYPES(T, seq)>(#T, { PY_EXPORTER_FIELDS(T, seq) })
 

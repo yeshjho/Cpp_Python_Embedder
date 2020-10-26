@@ -7,7 +7,7 @@ Print2((123,), "a string coming right up!")
 
 vec = Vec(10, 20, 30)
 
-f(vec.add(Vec(4, 5, 6)))
+f(vec.q(Vec(4, 5, 6)))
 
 result = g(9)
 

@@ -96,7 +96,8 @@ int main()
 	PY_EXPORT_STATIC_FUNCTION(C, Print, test);
 	PY_EXPORT_MEMBER_FUNCTION_AS_STATIC_FUNCTION(C, Print2, instance_returner, test);
 
-	PY_EXPORT_MEMBER_FUNCTION(Vec, add, test);
+	//PY_EXPORT_MEMBER_FUNCTION(Vec, add, test);
+	PY_EXPORT_MEMBER_FUNCTION_NAME(Vec, add, q, test);
 	PY_EXPORT_TYPE(Vec, test, (x)(y)(z));
 
 	PY_EXPORT_GLOBAL_FUNCTION(f, test);
