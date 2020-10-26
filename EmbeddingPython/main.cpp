@@ -4,40 +4,6 @@
 #include <iostream>
 
 
-
-//template<typename T>
-//static PyObject* spam_system([[maybe_unused]] PyObject* self, PyObject* args)
-//{
-//	int command;
-//
-//	if (!PyArg_ParseTuple(args, "i", &command))
-//	{
-//		return nullptr;
-//	}
-//
-//	std::cout << command;
-//	
-//	return PyLong_FromLong(0);
-//}
-//
-//static struct PyMethodDef methods[]
-//{
-//	{ "say_hi", &spam_system<int>, METH_VARARGS, "" },
-//	{ nullptr, nullptr, 0, nullptr }
-//};
-//
-//static struct PyModuleDef moduleDef{
-//	PyModuleDef_HEAD_INIT, "test", "test module", -1, methods,
-//	nullptr, nullptr, nullptr, nullptr
-//};
-//
-//
-//PyMODINIT_FUNC PyInit_void()
-//{
-//	return PyModule_Create(&moduleDef);
-//}
-
-
 std::string add_5(int i)
 {
 	return std::string("str: 5") + std::to_string(i);

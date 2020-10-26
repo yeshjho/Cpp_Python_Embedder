@@ -1,16 +1,17 @@
-import test
+from test import *
 
-ret = test.add_5(3)
-test.crazy_function(True, 'r', -1, 10, -1, 40, -1, 960, -1, 45678, -1, 3.423, -546.231, ret)
-test.Print()
-test.Print2((123,), "a string coming right up!")
+ret = add_5(3)
+crazy_function(True, 'r', -1, 10, -1, 40, -1, 960, -1, 45678, -1, 3.423, -546.231, ret)
+Print()
+Print2((123,), "a string coming right up!")
 
-vec = test.Vec(10, 20, 30)
+vec = Vec(10, 20, 30)
 
-test.f(vec.add(test.Vec(4, 5, 6)))
+f(vec.add(Vec(4, 5, 6)))
 
-result = test.g(9)
-test.h(vec.x)
-test.h(vec.y)
-test.h(vec.z)
-test.f(result)
+result = g(9)
+
+h(result.x)
+h(result.y)
+h(result.z)
+f(result)

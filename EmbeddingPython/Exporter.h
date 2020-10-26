@@ -254,10 +254,14 @@ public:
 		
 		PyObject* const pyModule = PyModule_Create(&moduleDef);
 
-		for (PyTypeObject& type : types)
+		for (PyTypeObject* type : types)
 		{
-			Py_INCREF(&type);
-			PyModule_AddType(pyModule, &type);
+			if (PyType_Ready(type) != 0)
+			{
+				return nullptr;
+			}
+			Py_INCREF(type);
+			PyModule_AddType(pyModule, type);
 		}
 		
 		return pyModule;
@@ -268,7 +272,7 @@ private:
 	inline static std::string moduleName;
 	
 	inline static std::vector<PyMethodDef> methods;
-	inline static std::vector<PyTypeObject> types;
+	inline static std::vector<PyTypeObject*> types;
 	
 	inline static PyModuleDef moduleDef;
 };
@@ -919,7 +923,7 @@ void Exporter<ModuleNameHashValue>::RegisterType(const char* typeName, std::init
 	typeObject.tp_methods = PyExportedType::methods.data();
 
 	PyExportedType::typeInfo = typeObject;
-	types.push_back(typeObject);
+	types.push_back(&PyExportedType::typeInfo);
 }
 
 }
