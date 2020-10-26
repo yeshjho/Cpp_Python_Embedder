@@ -123,6 +123,8 @@ int main()
 	// https://docs.python.org/3.8/c-api/arg.html
 	// https://docs.python.org/3/extending/newtypes_tutorial.html
 
+	using namespace cpp_python_embedder;
+
 	PY_EXPORT_GLOBAL_FUNCTION(add_5, test);
 	PY_EXPORT_GLOBAL_FUNCTION(crazy_function, test);
 	PY_EXPORT_STATIC_FUNCTION(C, Print, test);
