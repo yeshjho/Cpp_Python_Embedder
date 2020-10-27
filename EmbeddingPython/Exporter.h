@@ -84,15 +84,21 @@ using xxhash::literals::operator ""_xxh64;
 #define PY_EXPORT_MEMBER_FUNCTION_NAME(T, func, funcName, moduleName) Exporter<#moduleName##_xxh64>::RegisterMemberFunction<decltype(&##T##::##func), &##T##::##func, T>(#funcName)
 #define PY_EXPORT_MEMBER_FUNCTION(T, func, moduleName) PY_EXPORT_MEMBER_FUNCTION_NAME(T, func, func, moduleName)
 
-#define PY_EXPORT_TYPE(T, moduleName, seq) Exporter<#moduleName##_xxh64>::RegisterType<T, std::integer_sequence<size_t, PY_EXPORTER_FIELD_OFFSETS(T, seq)>, PY_EXPORTER_FIELD_TYPES(T, seq)>(#T, { PY_EXPORTER_FIELDS(T, seq) })
+#define PY_EXPORT_TYPE_NAME(T, typeName, moduleName, fieldSeq) Exporter<#moduleName##_xxh64>::RegisterType<T, std::integer_sequence<size_t, PY_EXPORTER_FIELD_OFFSETS(T, fieldSeq)>, PY_EXPORTER_FIELD_TYPES(T, fieldSeq)>(#typeName, { PY_EXPORTER_FIELDS(T, fieldSeq) })
+#define PY_EXPORT_TYPE(T, moduleName, fieldSeq) PY_EXPORT_TYPE_NAME(T, T, moduleName, fieldSeq)
 
-#define PY_EXPORT_MODULE(moduleName) Exporter<#moduleName##_xxh64>::Export(#moduleName)
+#define PY_EXPORT_MODULE_NAME(moduleName, newName) Exporter<#moduleName##_xxh64>::Export(#newName)
+#define PY_EXPORT_MODULE(moduleName) PY_EXPORT_MODULE_NAME(moduleName, moduleName)
 
 
 //#define PY_EXPORT_MEMBER_FUNCTION(func, funcName, instanceReturner, moduleName) static auto funcName##instanceReturnFunction = instanceReturner; \
 //	Exporter<#moduleName##_xxh64>::RegisterMemberFunction<decltype(&##func), &##func, decltype(&##funcName##instanceReturnFunction), &##funcName##instanceReturnFunction>(#funcName)
 // TODO: Support Lambda https://qiita.com/angeart/items/94734d68999eca575881
 
+// TODO: Support user-defined data types as field
+// TODO: Support array as field (python list)
+// TODO: Support operator overloading https://docs.python.org/3/c-api/typeobj.html#number-object-structures tp_as_number
+// TODO: Interpret const& as a value while passing parameters
 
 // TODO: Memory Leak (INCREF, DECREF) https://docs.python.org/3/c-api/intro.html#objects-types-and-reference-counts
 // http://edcjones.tripod.com/refcount.html
@@ -146,7 +152,7 @@ namespace python_embedder_detail
 
 
 
-	template<typename T, typename = std::enable_if_t<std::is_trivially_copyable_v<T>&& std::is_default_constructible_v<T>>>
+	template<typename T, typename = std::enable_if_t<std::is_trivially_copy_assignable_v<T> && std::is_trivially_copy_constructible_v<T> && std::is_default_constructible_v<T>>>
 	struct PyExportedClass
 	{
 		PyObject_HEAD
@@ -363,6 +369,8 @@ PyObject* python_embedder_detail::Converter<T>::BuildValue(T* pT)
 	
 	PyObject_Init(object, &PyExportedClass<T>::typeInfo);
 	toReturn->t = *pT;
+
+	// TODO: To support custom objects, manually parse the arguments and use pyobject_callobject
 
 	return object;
 }
@@ -706,7 +714,6 @@ constexpr const char* python_embedder_detail::get_argument_type_format_string(co
 	{
 		return "p";
 	}
-	// Need an assumption that the argument will never be a number, rather a string with single character
 	else if constexpr (std::is_same_v<T, char>)
 	{
 		return treatCharAsNumber ? "B" : "C";
@@ -776,7 +783,7 @@ constexpr int python_embedder_detail::get_member_type_number()
 	{
 		return T_BOOL;
 	}
-	// This time, assume it as a number
+	// Assume it as a number
 	else if constexpr (std::is_same_v<T, char>)
 	{
 		return T_BYTE;
@@ -896,6 +903,11 @@ void Exporter<ModuleNameHashValue>::RegisterMemberFunction(const char* functionN
 
 	using InstantiatedDispatcher = python_embedder_detail::MemberDispatcher<FunctionPtrType, FunctionPtr, ReturnType, parameterCount, ParameterTypeTuple, Class>;
 
+	if (python_embedder_detail::PyExportedClass<Class>::methods.back.ml_name == nullptr)
+	{
+		throw std::runtime_error("All member functions must be exported first before its type");
+	}
+	
 	python_embedder_detail::PyExportedClass<Class>::methods.push_back(PyMethodDef{
 		functionName,
 		&InstantiatedDispatcher::ReplicatedFunction,
