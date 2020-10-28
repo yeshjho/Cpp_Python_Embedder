@@ -95,9 +95,7 @@ int main()
 	// https://docs.python.org/3/extending/newtypes_tutorial.html
 	// https://docs.python.org/3/c-api/typeobj.html
 
-	using namespace cpp_python_embedder;
-	using namespace python_embedder_detail;
-
+	
 	PY_EXPORT_GLOBAL_FUNCTION(add_5, test);
 	PY_EXPORT_GLOBAL_FUNCTION(crazy_function, test);
 	PY_EXPORT_STATIC_FUNCTION(C, Print, test);

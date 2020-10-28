@@ -55,12 +55,10 @@
 #include <xxhash_cx/xxhash_cx.h>
 
 
-namespace cpp_python_embedder {
-	
 using xxhash::literals::operator ""_xxh64;
 
 
-#define PY_EXPORTER_FIELD(T, memberName) { #memberName, python_embedder_detail::get_member_type_number<decltype(T::##memberName)>(), offsetof(python_embedder_detail::PyExportedClass<T>, t) + offsetof(T, memberName), 0, nullptr },
+#define PY_EXPORTER_FIELD(T, memberName) { #memberName, cpp_python_embedder::get_member_type_number<decltype(T::##memberName)>(), offsetof(cpp_python_embedder::PyExportedClass<T>, t) + offsetof(T, memberName), 0, nullptr },
 #define PY_EXPORTER_FIELD_EXPANDER(_, T, memberName) PY_EXPORTER_FIELD(T, memberName)
 #define PY_EXPORTER_FIELDS(T, seq) BOOST_PP_SEQ_FOR_EACH(PY_EXPORTER_FIELD_EXPANDER, T, seq) { nullptr, 0, 0, 0, nullptr }
 
@@ -75,22 +73,25 @@ using xxhash::literals::operator ""_xxh64;
 #define PY_EXPORTER_FIELD_OFFSETS(T, seq) PY_EXPORTER_HEADS_FIELD_OFFSETS(T, BOOST_PP_SEQ_POP_BACK(seq)) offsetof(T, BOOST_PP_SEQ_HEAD(BOOST_PP_SEQ_REVERSE(seq)))
 
 
-#define PY_EXPORT_STATIC_FUNCTION_NAME(T, func, funcName, moduleName) Exporter<#moduleName##_xxh64>::RegisterFunction<decltype(&##T##::##func), &##T##::##func>(#funcName)
+#define PY_EXPORT_STATIC_FUNCTION_NAME(T, func, funcName, moduleName) cpp_python_embedder::Exporter<#moduleName##_xxh64>::RegisterFunction<decltype(&##T##::##func), &##T##::##func>(#funcName)
 #define PY_EXPORT_STATIC_FUNCTION(T, func, moduleName) PY_EXPORT_STATIC_FUNCTION_NAME(T, func, func, moduleName)
-#define PY_EXPORT_GLOBAL_FUNCTION_NAME(func, funcName, moduleName) Exporter<#moduleName##_xxh64>::RegisterFunction<decltype(&##func), &##func>(#funcName)
+#define PY_EXPORT_GLOBAL_FUNCTION_NAME(func, funcName, moduleName) cpp_python_embedder::Exporter<#moduleName##_xxh64>::RegisterFunction<decltype(&##func), &##func>(#funcName)
 #define PY_EXPORT_GLOBAL_FUNCTION(func, moduleName) PY_EXPORT_GLOBAL_FUNCTION_NAME(func, func, moduleName)
-#define PY_EXPORT_MEMBER_FUNCTION_AS_STATIC_FUNCTION_NAME(T, func, funcName, instanceReturner, moduleName) Exporter<#moduleName##_xxh64>::RegisterMemberFunctionAsStaticFunction<decltype(&##T##::##func), &##T##::##func, decltype(&##instanceReturner), &##instanceReturner>(#funcName)
+#define PY_EXPORT_MEMBER_FUNCTION_AS_STATIC_FUNCTION_NAME(T, func, funcName, instanceReturner, moduleName) cpp_python_embedder::Exporter<#moduleName##_xxh64>::RegisterMemberFunctionAsStaticFunction<decltype(&##T##::##func), &##T##::##func, decltype(&##instanceReturner), &##instanceReturner>(#funcName)
 #define PY_EXPORT_MEMBER_FUNCTION_AS_STATIC_FUNCTION(T, func, instanceReturner, moduleName) PY_EXPORT_MEMBER_FUNCTION_AS_STATIC_FUNCTION_NAME(T, func, func, instanceReturner, moduleName)
-#define PY_EXPORT_MEMBER_FUNCTION_NAME(T, func, funcName, moduleName) Exporter<#moduleName##_xxh64>::RegisterMemberFunction<decltype(&##T##::##func), &##T##::##func, T>(#funcName)
+#define PY_EXPORT_MEMBER_FUNCTION_NAME(T, func, funcName, moduleName) cpp_python_embedder::Exporter<#moduleName##_xxh64>::RegisterMemberFunction<decltype(&##T##::##func), &##T##::##func, T>(#funcName)
 #define PY_EXPORT_MEMBER_FUNCTION(T, func, moduleName) PY_EXPORT_MEMBER_FUNCTION_NAME(T, func, func, moduleName)
 
-#define PY_EXPORT_TYPE_NAME(T, typeName, moduleName, fieldSeq) Exporter<#moduleName##_xxh64>::RegisterType<T, std::integer_sequence<size_t, PY_EXPORTER_FIELD_OFFSETS(T, fieldSeq)>, PY_EXPORTER_FIELD_TYPES(T, fieldSeq)>(#typeName, { PY_EXPORTER_FIELDS(T, fieldSeq) })
+#define PY_EXPORT_TYPE_NAME(T, typeName, moduleName, fieldSeq) cpp_python_embedder::Exporter<#moduleName##_xxh64>::RegisterType<T, std::integer_sequence<size_t, PY_EXPORTER_FIELD_OFFSETS(T, fieldSeq)>, PY_EXPORTER_FIELD_TYPES(T, fieldSeq)>(#typeName, { PY_EXPORTER_FIELDS(T, fieldSeq) })
 #define PY_EXPORT_TYPE(T, moduleName, fieldSeq) PY_EXPORT_TYPE_NAME(T, T, moduleName, fieldSeq)
 
-#define PY_EXPORT_MODULE_NAME(moduleName, newName) Exporter<#moduleName##_xxh64>::Export(#newName)
+#define PY_EXPORT_MODULE_NAME(moduleName, newName) cpp_python_embedder::Exporter<#moduleName##_xxh64>::Export(#newName)
 #define PY_EXPORT_MODULE(moduleName) PY_EXPORT_MODULE_NAME(moduleName, moduleName)
 
 
+
+namespace cpp_python_embedder
+{
 //#define PY_EXPORT_MEMBER_FUNCTION(func, funcName, instanceReturner, moduleName) static auto funcName##instanceReturnFunction = instanceReturner; \
 //	Exporter<#moduleName##_xxh64>::RegisterMemberFunction<decltype(&##func), &##func, decltype(&##funcName##instanceReturnFunction), &##funcName##instanceReturnFunction>(#funcName)
 // TODO: Support Lambda https://qiita.com/angeart/items/94734d68999eca575881
@@ -103,7 +104,7 @@ using xxhash::literals::operator ""_xxh64;
 // http://edcjones.tripod.com/refcount.html
 
 
-namespace python_embedder_detail
+inline namespace python_embedder_detail
 {
 	template<typename T, typename = void>
 	struct is_const_ref : std::false_type
@@ -928,7 +929,6 @@ template <typename FunctionPtrType, FunctionPtrType FunctionPtr>
 void Exporter<ModuleNameHashValue>::RegisterFunction(const char* functionName)
 {
 	using namespace boost::function_types;
-	using namespace python_embedder_detail;
 
 	static_assert(is_function_pointer<FunctionPtrType>::value);
 	static_assert(!is_member_function_pointer<FunctionPtrType>::value);
@@ -951,7 +951,6 @@ template <typename FunctionPtrType, FunctionPtrType FunctionPtr, typename Instan
 void Exporter<ModuleNameHashValue>::RegisterMemberFunctionAsStaticFunction(const char* functionName)
 {
 	using namespace boost::function_types;
-	using namespace python_embedder_detail;
 
 	static_assert(is_member_function_pointer<FunctionPtrType>::value);
 	static_assert(is_function_pointer<InstanceReturnFunctionType>::value);
@@ -982,7 +981,6 @@ template <typename FunctionPtrType, FunctionPtrType FunctionPtr, typename Class>
 void Exporter<ModuleNameHashValue>::RegisterMemberFunction(const char* functionName)
 {
 	using namespace boost::function_types;
-	using namespace python_embedder_detail;
 
 	static_assert(is_member_function_pointer<FunctionPtrType>::value);
 	static_assert(is_supported_custom_type_v<Class>);
@@ -1015,8 +1013,6 @@ template <unsigned long long ModuleNameHashValue>
 template <typename T, typename Offsets, typename... FieldTypes>
 void Exporter<ModuleNameHashValue>::RegisterType(const char* typeName, std::initializer_list<PyMemberDef> members)
 {
-	using namespace python_embedder_detail;
-	
 	static_assert(is_supported_custom_type_v<T>);
 	static_assert(ValidityChecker<is_supported_field_type, std::tuple<FieldTypes...>, sizeof...(FieldTypes)>::value);
 	
