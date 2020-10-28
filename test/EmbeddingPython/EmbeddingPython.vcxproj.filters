@@ -20,7 +20,7 @@
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="..\..\CppPythonEmbedder.h">
+    <ClInclude Include="..\..\CppPythonEmbedder.hpp">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>
