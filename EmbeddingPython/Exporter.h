@@ -98,7 +98,6 @@ using xxhash::literals::operator ""_xxh64;
 // TODO: Support user-defined data types as field
 // TODO: Support array as field (python list)
 // TODO: Support operator overloading https://docs.python.org/3/c-api/typeobj.html#number-object-structures tp_as_number
-// TODO: Interpret const& as a value while passing parameters
 
 // TODO: Memory Leak (INCREF, DECREF) https://docs.python.org/3/c-api/intro.html#objects-types-and-reference-counts
 // http://edcjones.tripod.com/refcount.html
@@ -106,16 +105,110 @@ using xxhash::literals::operator ""_xxh64;
 
 namespace python_embedder_detail
 {
+	template<typename T, typename = void>
+	struct is_const_ref : std::false_type
+	{};
+
+	template<typename T>
+	struct is_const_ref<T, std::enable_if_t<std::is_lvalue_reference_v<T> && std::is_const_v<std::remove_reference_t<T>>>
+	> : std::true_type
+	{};
+
+	template<typename T>
+	constexpr bool is_const_ref_v = is_const_ref<T>::value;
+
+
+	template<typename T>
+	struct remove_const_ref
+	{
+		using type = std::remove_const_t<std::remove_reference_t<T>>;
+	};
+
+	template<typename T>
+	using remove_const_ref_t = typename remove_const_ref<T>::type;
+
+
+	template<typename T, typename = void>
+	struct is_supported_custom_type : std::false_type
+	{};
+
+	template<typename T>
+	struct is_supported_custom_type<T, std::enable_if_t<std::is_class_v<T> && std::is_trivially_copy_assignable_v<T> && std::is_trivially_copy_constructible_v<T> && std::is_default_constructible_v<T>>
+	> : std::true_type
+	{};
+
+	template<typename T>
+	constexpr bool is_supported_custom_type_v = is_supported_custom_type<T>::value;
+
+
+	template<typename T, typename = void>
+	struct is_supported_field_type : std::false_type
+	{};
+
+	template<typename T>
+	struct is_supported_field_type < T, std::enable_if_t<
+		std::is_fundamental_v<T> || std::is_same_v<T, const char*> || std::is_same_v<T, std::string>
+	>> : std::true_type
+	{};
+
+	template<typename T>
+	constexpr bool is_supported_field_type_v = is_supported_field_type<T>::value;
+	
+
+	template<typename T, typename = void>
+	struct is_supported_parameter_type : std::false_type
+	{};
+
+	template<typename T>
+	struct is_supported_parameter_type<T, std::enable_if_t<
+		is_supported_field_type_v<T> ||
+		(is_supported_custom_type_v<T> && (std::is_move_assignable_v<T> || std::is_copy_assignable_v<T>)) ||
+		(is_const_ref_v<T> && 
+			(is_supported_field_type_v<remove_const_ref_t<T>> ||
+			(is_supported_custom_type_v<remove_const_ref_t<T>> && (std::is_move_assignable_v<remove_const_ref_t<T>> || std::is_copy_assignable_v<remove_const_ref_t<T>>)))
+		)
+	>> : std::true_type
+	{};
+
+	template<typename T>
+	constexpr bool is_supported_parameter_type_v = is_supported_parameter_type<T>::value;
+
+
+	template<typename T, typename = void>
+	struct is_supported_return_type : std::false_type
+	{};
+
+	template<typename T>
+	struct is_supported_return_type<T, std::enable_if_t<
+		std::is_void_v<T> ||
+		std::is_fundamental_v<T> || std::is_same_v<T, const char*> || std::is_same_v<T, std::string> ||
+		(is_supported_custom_type_v<T> && (std::is_move_assignable_v<T> || std::is_copy_assignable_v<T>))
+	>> : std::true_type
+	{};
+
+	template<typename T>
+	constexpr bool is_supported_return_type_v = is_supported_return_type<T>::value;
+
+
+	
+	template<template<typename, typename = void> typename Checker, typename ParameterTypes, size_t... Indices>
+	auto validity_checker_helper(ParameterTypes, std::index_sequence<Indices...>)
+		-> std::conjunction<Checker<std::tuple_element_t<Indices, ParameterTypes>>...>;
+
+	template<template<typename, typename> typename Checker, typename ParameterTypes, size_t ParameterCount>
+	using ValidityChecker = decltype(validity_checker_helper<Checker>(std::declval<ParameterTypes>(), std::make_index_sequence<ParameterCount>()));
+
+	
 	template<typename ParameterTypes, size_t... Indices>
 	auto get_parameter_tuple_helper(ParameterTypes, std::index_sequence<Indices...>)
-		-> std::tuple<typename boost::mpl::at_c<ParameterTypes, Indices>::type...>;
+		-> std::tuple<remove_const_ref_t<typename boost::mpl::at_c<ParameterTypes, Indices>::type>...>;
 
 	template<typename ParameterTypes, size_t ParameterCount>
 	using ParameterTuple = decltype(get_parameter_tuple_helper(std::declval<ParameterTypes>(), std::make_index_sequence<ParameterCount>()));
 
 	
 	template<typename FirstParameterType, typename... ParameterTypes>
-	std::tuple<ParameterTypes...> get_tails_parameter_tuple_helper(std::tuple<FirstParameterType, ParameterTypes...>);
+	std::tuple<remove_const_ref_t<ParameterTypes>...> get_tails_parameter_tuple_helper(std::tuple<FirstParameterType, ParameterTypes...>);
 
 	template<typename ParameterTypes, size_t ParameterCount>
 	using TailsParameterTuple = decltype(get_tails_parameter_tuple_helper(std::declval<ParameterTuple<ParameterTypes, ParameterCount>>()));
@@ -152,7 +245,7 @@ namespace python_embedder_detail
 
 
 
-	template<typename T, typename = std::enable_if_t<std::is_trivially_copy_assignable_v<T> && std::is_trivially_copy_constructible_v<T> && std::is_default_constructible_v<T>>>
+	template<typename T>
 	struct PyExportedClass
 	{
 		PyObject_HEAD
@@ -291,8 +384,8 @@ private:
 
 
 
-template <typename T, typename _>
-PyObject* python_embedder_detail::PyExportedClass<T, _>::CustomNew(PyTypeObject* type, [[maybe_unused]] PyObject* args, [[maybe_unused]] PyObject* keywords)
+template <typename T>
+PyObject* python_embedder_detail::PyExportedClass<T>::CustomNew(PyTypeObject* type, [[maybe_unused]] PyObject* args, [[maybe_unused]] PyObject* keywords)
 {
 	PyExportedClass* const self = reinterpret_cast<PyExportedClass*>(type->tp_alloc(type, 0));
 
@@ -302,9 +395,9 @@ PyObject* python_embedder_detail::PyExportedClass<T, _>::CustomNew(PyTypeObject*
 }
 
 
-template <typename T, typename _>
+template <typename T>
 template <typename Offsets, typename ... FieldTypes>
-int python_embedder_detail::PyExportedClass<T, _>::CustomInit(PyObject* self_, PyObject* args, [[maybe_unused]] PyObject* keywords)
+int python_embedder_detail::PyExportedClass<T>::CustomInit(PyObject* self_, PyObject* args, [[maybe_unused]] PyObject* keywords)
 {
 	PyExportedClass* const self = reinterpret_cast<PyExportedClass*>(self_);
 
@@ -315,10 +408,6 @@ int python_embedder_detail::PyExportedClass<T, _>::CustomInit(PyObject* self_, P
 	boost::mp11::mp_for_each<boost::mp11::mp_iota_c<fieldCount>>([&](auto i)
 		{
 			using NthFieldType = std::tuple_element_t<i, FieldTypeTuple>;
-
-			static_assert(std::is_default_constructible_v<NthFieldType>);
-			static_assert(std::is_move_assignable_v<NthFieldType>);
-			static_assert(std::is_fundamental_v<NthFieldType> || std::is_same_v<NthFieldType, const char*>);
 
 			PyObject* const pyObjectValue = PyTuple_GetItem(args, i);
 			TempVarType<NthFieldType> value;
@@ -344,8 +433,8 @@ int python_embedder_detail::PyExportedClass<T, _>::CustomInit(PyObject* self_, P
 }
 
 
-template <typename T, typename _>
-void python_embedder_detail::PyExportedClass<T, _>::CustomDealloc(PyObject* self)
+template <typename T>
+void python_embedder_detail::PyExportedClass<T>::CustomDealloc(PyObject* self)
 {
 	Py_TYPE(self)->tp_free(self);
 }
@@ -385,9 +474,6 @@ PyObject* python_embedder_detail::Dispatcher<FunctionPtrType, FunctionPtr, Retur
 	boost::mp11::mp_for_each<boost::mp11::mp_iota_c<ParameterCount>>([&](auto i)
 		{
 			using NthParameterType = std::tuple_element_t<i, ParameterTypeTuple>;
-
-			static_assert(std::is_default_constructible_v<NthParameterType>);
-			static_assert(std::is_move_assignable_v<NthParameterType>);
 
 			PyObject* const pyObjectValue = PyTuple_GetItem(args, i);
 			TempVarType<NthParameterType> value;
@@ -476,9 +562,6 @@ PyObject* python_embedder_detail::MemberAsStaticDispatcher<FunctionPtrType, Func
 		{
 			using NthParameterType = std::tuple_element_t<i, InstanceReturnFunctionParameterTypeTuple>;
 
-			static_assert(std::is_default_constructible_v<NthParameterType>);
-			static_assert(std::is_move_assignable_v<NthParameterType>);
-
 			PyObject* const pyObjectValue = PyTuple_GetItem(instanceReturnFunctionArgs, i);
 			TempVarType<NthParameterType> value;
 
@@ -531,9 +614,6 @@ PyObject* python_embedder_detail::MemberAsStaticDispatcher<FunctionPtrType, Func
 	boost::mp11::mp_for_each<boost::mp11::mp_iota_c<ParameterCount - 1>>([&](auto i)
 		{
 			using NthParameterType = std::tuple_element_t<i, ParameterTypeTuple>;
-
-			static_assert(std::is_default_constructible_v<NthParameterType>);
-			static_assert(std::is_move_assignable_v<NthParameterType>);
 
 			PyObject* const pyObjectValue = PyTuple_GetItem(realArgs, i);
 			TempVarType<NthParameterType> value;
@@ -623,9 +703,6 @@ PyObject* python_embedder_detail::MemberDispatcher<FunctionPtrType, FunctionPtr,
 	boost::mp11::mp_for_each<boost::mp11::mp_iota_c<ParameterCount - 1>>([&](auto i)
 		{
 			using NthParameterType = std::tuple_element_t<i, ParameterTypeTuple>;
-
-			static_assert(std::is_default_constructible_v<NthParameterType>);
-			static_assert(std::is_move_assignable_v<NthParameterType>);
 
 			PyObject* const pyObjectValue = PyTuple_GetItem(args, i);
 			TempVarType<NthParameterType> value;
@@ -851,15 +928,19 @@ template <typename FunctionPtrType, FunctionPtrType FunctionPtr>
 void Exporter<ModuleNameHashValue>::RegisterFunction(const char* functionName)
 {
 	using namespace boost::function_types;
+	using namespace python_embedder_detail;
 
 	static_assert(is_function_pointer<FunctionPtrType>::value);
 	static_assert(!is_member_function_pointer<FunctionPtrType>::value);
 
 	constexpr size_t parameterCount = function_arity<FunctionPtrType>::value;
 	using ReturnType = typename result_type<FunctionPtrType>::type;
-	using ParameterTypeTuple = python_embedder_detail::ParameterTuple<parameter_types<FunctionPtrType>, parameterCount>;
-
-	using InstantiatedDispatcher = python_embedder_detail::Dispatcher<FunctionPtrType, FunctionPtr, ReturnType, parameterCount, ParameterTypeTuple>;
+	using ParameterTypes = parameter_types<FunctionPtrType>;
+	using ParameterTypeTuple = ParameterTuple<ParameterTypes, parameterCount>;
+	static_assert(ValidityChecker<is_supported_parameter_type, ParameterTypeTuple, parameterCount>::value);
+	static_assert(is_supported_return_type_v<ReturnType>);
+	
+	using InstantiatedDispatcher = Dispatcher<FunctionPtrType, FunctionPtr, ReturnType, parameterCount, ParameterTypeTuple>;
 
 	methods.push_back(PyMethodDef{ functionName, &InstantiatedDispatcher::ReplicatedFunction, METH_VARARGS, nullptr });
 }
@@ -870,19 +951,26 @@ template <typename FunctionPtrType, FunctionPtrType FunctionPtr, typename Instan
 void Exporter<ModuleNameHashValue>::RegisterMemberFunctionAsStaticFunction(const char* functionName)
 {
 	using namespace boost::function_types;
+	using namespace python_embedder_detail;
 
 	static_assert(is_member_function_pointer<FunctionPtrType>::value);
 	static_assert(is_function_pointer<InstanceReturnFunctionType>::value);
 
 	constexpr size_t parameterCount = function_arity<FunctionPtrType>::value;
 	using ReturnType = typename result_type<FunctionPtrType>::type;
-	using ParameterTypeTuple = python_embedder_detail::TailsParameterTuple<parameter_types<FunctionPtrType>, parameterCount>;
+	using ParameterTypes = parameter_types<FunctionPtrType>;
+	using ParameterTypeTuple = TailsParameterTuple<ParameterTypes, parameterCount>;
+	static_assert(ValidityChecker<is_supported_parameter_type, ParameterTypeTuple, parameterCount - 1>::value);
+	static_assert(is_supported_return_type_v<ReturnType>);
 
 	constexpr size_t instanceReturnerParameterCount = function_arity<InstanceReturnFunctionType>::value;
 	using InstanceReturnerReturnType = typename result_type<InstanceReturnFunctionType>::type;
-	using InstanceReturnerParameterTypeTuple = python_embedder_detail::ParameterTuple<parameter_types<InstanceReturnFunctionType>, instanceReturnerParameterCount>;
-
-	using InstantiatedDispatcher = python_embedder_detail::MemberAsStaticDispatcher<FunctionPtrType, FunctionPtr, ReturnType, parameterCount, ParameterTypeTuple,
+	using InstanceReturnerParameterTypes = parameter_types<InstanceReturnFunctionType>;
+	using InstanceReturnerParameterTypeTuple = ParameterTuple<InstanceReturnerParameterTypes, instanceReturnerParameterCount>;
+	static_assert(ValidityChecker<is_supported_parameter_type, InstanceReturnerParameterTypeTuple, instanceReturnerParameterCount>::value);
+	static_assert(std::is_same_v<InstanceReturnerReturnType, remove_const_ref_t<typename boost::mpl::at_c<ParameterTypes, 0>::type>*>);
+	
+	using InstantiatedDispatcher = MemberAsStaticDispatcher<FunctionPtrType, FunctionPtr, ReturnType, parameterCount, ParameterTypeTuple,
 		InstanceReturnFunctionType, InstanceReturnFunction, InstanceReturnerReturnType, instanceReturnerParameterCount, InstanceReturnerParameterTypeTuple>;
 
 	methods.push_back(PyMethodDef{ functionName, &InstantiatedDispatcher::ReplicatedFunction, METH_VARARGS, nullptr });
@@ -894,21 +982,26 @@ template <typename FunctionPtrType, FunctionPtrType FunctionPtr, typename Class>
 void Exporter<ModuleNameHashValue>::RegisterMemberFunction(const char* functionName)
 {
 	using namespace boost::function_types;
+	using namespace python_embedder_detail;
 
 	static_assert(is_member_function_pointer<FunctionPtrType>::value);
+	static_assert(is_supported_custom_type_v<Class>);
 
 	constexpr size_t parameterCount = function_arity<FunctionPtrType>::value;
 	using ReturnType = typename result_type<FunctionPtrType>::type;
-	using ParameterTypeTuple = python_embedder_detail::TailsParameterTuple<parameter_types<FunctionPtrType>, parameterCount>;
+	using ParameterTypes = parameter_types<FunctionPtrType>;
+	using ParameterTypeTuple = TailsParameterTuple<ParameterTypes, parameterCount>;
+	static_assert(ValidityChecker<is_supported_parameter_type, ParameterTypeTuple, parameterCount - 1>::value);
+	static_assert(is_supported_return_type_v<ReturnType>);
 
-	using InstantiatedDispatcher = python_embedder_detail::MemberDispatcher<FunctionPtrType, FunctionPtr, ReturnType, parameterCount, ParameterTypeTuple, Class>;
+	using InstantiatedDispatcher = MemberDispatcher<FunctionPtrType, FunctionPtr, ReturnType, parameterCount, ParameterTypeTuple, Class>;
 
-	if (python_embedder_detail::PyExportedClass<Class>::methods.back.ml_name == nullptr)
+	if (!PyExportedClass<Class>::methods.empty() && PyExportedClass<Class>::methods.back().ml_name == nullptr)
 	{
 		throw std::runtime_error("All member functions must be exported first before its type");
 	}
 	
-	python_embedder_detail::PyExportedClass<Class>::methods.push_back(PyMethodDef{
+	PyExportedClass<Class>::methods.push_back(PyMethodDef{
 		functionName,
 		&InstantiatedDispatcher::ReplicatedFunction,
 		METH_VARARGS,
@@ -922,7 +1015,12 @@ template <unsigned long long ModuleNameHashValue>
 template <typename T, typename Offsets, typename... FieldTypes>
 void Exporter<ModuleNameHashValue>::RegisterType(const char* typeName, std::initializer_list<PyMemberDef> members)
 {
-	using PyExportedType = python_embedder_detail::PyExportedClass<T>;
+	using namespace python_embedder_detail;
+	
+	static_assert(is_supported_custom_type_v<T>);
+	static_assert(ValidityChecker<is_supported_field_type, std::tuple<FieldTypes...>, sizeof...(FieldTypes)>::value);
+	
+	using PyExportedType = PyExportedClass<T>;
 
 	PyExportedType::fields = members;
 	PyExportedType::methods.push_back(PyMethodDef{ nullptr, nullptr, 0, nullptr });

@@ -5,14 +5,14 @@ crazy_function(True, 'r', -1, 10, -1, 40, -1, 960, -1, 45678, -1, 3.423, -546.23
 Print()
 Print2((123,), "a string coming right up!")
 
-v = vec3(10, 30)
+v = vec3(10, 20, 30)
 
 #f(v.q(vec3(4, 5, 6)))
 
-result = i(9)
-j(result)
+result = i(1)
 
-h(result.x)
-#h(result.y)
-h(result.z)
+j(result)
+j(v)
+
+h(dot(result, v))
 #f(result)

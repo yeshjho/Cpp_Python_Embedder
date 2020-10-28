@@ -1,6 +1,6 @@
 // This should be included before any std header
 #include "Exporter.h"
-#include <glm/vec3.hpp>
+#include <glm/glm.hpp>
 #include <iostream>
 
 
@@ -31,7 +31,7 @@ public:
 	C() = default;
 	C(int i): i(i){}
 
-	void Print2(std::string s)
+	void Print2(const std::string& s) const
 	{
 		std::cout << "Called! " << i << s << std::endl;
 	}
@@ -55,7 +55,7 @@ struct Vec
 	float y;
 	float z;
 
-	Vec add(Vec c)
+	Vec add(Vec c) const
 	{
 		return { x + c.x, y + c.y, z + c.z };
 	}
@@ -65,11 +65,6 @@ struct Vec
 void f(Vec v)
 {
 	std::cout << v.x << " " << v.y << " " << v.z << std::endl;
-}
-
-Vec g(float i)
-{
-	return Vec{ i * 100.f, i * 200.f, i * 300.f };
 }
 
 void h(float f)
@@ -101,20 +96,22 @@ int main()
 	// https://docs.python.org/3/c-api/typeobj.html
 
 	using namespace cpp_python_embedder;
+	using namespace python_embedder_detail;
 
 	PY_EXPORT_GLOBAL_FUNCTION(add_5, test);
 	PY_EXPORT_GLOBAL_FUNCTION(crazy_function, test);
 	PY_EXPORT_STATIC_FUNCTION(C, Print, test);
 	PY_EXPORT_MEMBER_FUNCTION_AS_STATIC_FUNCTION(C, Print2, instance_returner, test);
 
-	//PY_EXPORT_MEMBER_FUNCTION(Vec, add, test);
-	//PY_EXPORT_MEMBER_FUNCTION_NAME(Vec, add, q, test);
-
+	PY_EXPORT_MEMBER_FUNCTION(Vec, add, test);
+	PY_EXPORT_MEMBER_FUNCTION_NAME(Vec, add, q, test);
+	PY_EXPORT_TYPE(Vec, test, (x)(y)(z));
 	
-	PY_EXPORT_TYPE_NAME(glm::vec3, vec3, test, (x)(z));
+	PY_EXPORT_TYPE_NAME(glm::vec3, vec3, test, (x)(y)(z));
+
+	PY_EXPORT_GLOBAL_FUNCTION_NAME((glm::dot<3, float, glm::defaultp>), dot, test);
 
 	PY_EXPORT_GLOBAL_FUNCTION(f, test);
-	PY_EXPORT_GLOBAL_FUNCTION(g, test);
 	PY_EXPORT_GLOBAL_FUNCTION(h, test);
 	PY_EXPORT_GLOBAL_FUNCTION(i, test);
 	PY_EXPORT_GLOBAL_FUNCTION(j, test);
