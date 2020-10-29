@@ -88,11 +88,14 @@ class T
 public:
 	template<typename A, typename B, typename C>
 	static void f();
+
+	T& operator+=(int i);
 };
 
 
 int main()
 {
+	PY_EXPORT_MEMBER_OPERATOR(T, T::operator+=, cpp_python_embedder::EOperatorType::INPLACE_ADD, test);
 	PY_EXPORT_TEMPLATE_STATIC_FUNCTION_NAME(T, f, qwer, test, ((int, float, double))((std::string, long, char))((unsigned char, long long, short)));
 
 	
