@@ -95,8 +95,8 @@ public:
 
 int main()
 {
-	PY_EXPORT_MEMBER_OPERATOR(T, T::operator+=, cpp_python_embedder::EOperatorType::INPLACE_ADD, test);
-	PY_EXPORT_TEMPLATE_STATIC_FUNCTION_NAME(T, f, qwer, test, ((int, float, double))((std::string, long, char))((unsigned char, long long, short)));
+	// PY_EXPORT_MEMBER_OPERATOR(T, T::operator+=, cpp_python_embedder::EOperatorType::INPLACE_ADD, test);
+	// PY_EXPORT_TEMPLATE_STATIC_FUNCTION_NAME(T, f, qwer, test, ((int, float, double))((std::string, long, char))((unsigned char, long long, short)));
 
 	
 	// https://docs.python.org/3/extending/extending.html
@@ -113,7 +113,13 @@ int main()
 	PY_EXPORT_GLOBAL_FUNCTION(add_5, test);
 	PY_EXPORT_GLOBAL_FUNCTION(crazy_function, test);
 	PY_EXPORT_STATIC_FUNCTION(C, Print, test);
-	PY_EXPORT_MEMBER_FUNCTION_AS_STATIC_FUNCTION(C, Print2, instance_returner, test);
+
+	int ii = 555;
+	PY_EXPORT_MEMBER_FUNCTION_AS_STATIC_FUNCTION_LAMBDA(C, Print2, [=]() {
+		static C c(ii);
+		return &c;
+	}, test);
+	//PY_EXPORT_MEMBER_FUNCTION_AS_STATIC_FUNCTION(C, Print2, instance_returner, test);
 
 	PY_EXPORT_MEMBER_FUNCTION(Vec, add, test);
 	PY_EXPORT_MEMBER_FUNCTION_NAME(Vec, add, q, test);
@@ -133,7 +139,7 @@ int main()
 	Py_Initialize();
 
 	const char scriptName[] = "test.py";
-	FILE* script = _Py_fopen(scriptName, "r");
+	FILE* script = _Py_fopen(scriptName, "rb");
 	PyRun_AnyFile(script, scriptName);
 
 	Py_Finalize();
