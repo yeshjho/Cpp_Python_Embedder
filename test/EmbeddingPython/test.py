@@ -1,6 +1,6 @@
 from test import *
 
-ret = add_5(3)
+ret = add_5(55555)
 crazy_function(True, 'r', -1, 10, -1, 40, -1, 960, -1, 45678, -1, 3.423, -546.231, ret)
 Print()
 Print2((123,), "a string coming right up!")
@@ -16,3 +16,6 @@ j(v)
 
 h(dot(result, v))
 #f(result)
+
+
+qwer("int, float, double", 999)

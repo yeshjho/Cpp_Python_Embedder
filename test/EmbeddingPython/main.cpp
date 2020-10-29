@@ -87,7 +87,10 @@ class T
 {
 public:
 	template<typename A, typename B, typename C>
-	static void f();
+	static void f(int i)
+	{
+		std::cout << i << " " << __FUNCSIG__ << std::endl;
+	}
 
 	T& operator+=(int i);
 };
@@ -96,8 +99,6 @@ public:
 int main()
 {
 	// PY_EXPORT_MEMBER_OPERATOR(T, T::operator+=, cpp_python_embedder::EOperatorType::INPLACE_ADD, test);
-	// PY_EXPORT_TEMPLATE_STATIC_FUNCTION_NAME(T, f, qwer, test, ((int, float, double))((std::string, long, char))((unsigned char, long long, short)));
-
 	
 	// https://docs.python.org/3/extending/extending.html
 	// https://www.codeproject.com/Articles/820116/Embedding-Python-program-in-a-C-Cplusplus-code
@@ -128,6 +129,9 @@ int main()
 	PY_EXPORT_TYPE_NAME(glm::vec3, vec3, test, (x)(y)(z));
 
 	PY_EXPORT_GLOBAL_FUNCTION_NAME((glm::dot<3, float, glm::defaultp>), dot, test);
+
+	PY_EXPORT_TEMPLATE_STATIC_FUNCTION_NAME(T, f, qwer, test, ((int, float, double))((std::string, long, char))((unsigned char, long long, short)));
+
 
 	PY_EXPORT_GLOBAL_FUNCTION(f, test);
 	PY_EXPORT_GLOBAL_FUNCTION(h, test);

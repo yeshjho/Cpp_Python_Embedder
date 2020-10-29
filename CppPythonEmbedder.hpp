@@ -76,10 +76,10 @@ using xxhash::literals::operator ""_xxh64;
 #define _PY_EXPORTER_REMOVE_PARENTHESIS_HELPER(x) x
 #define _PY_EXPORTER_REMOVE_PARENTHESIS(x) _PY_EXPORTER_REMOVE_PARENTHESIS_HELPER(_PY_EXPORTER_REMOVE_PARENTHESIS_EXPAND_HELPER x)
 
-#define _PY_EXPORTER_TEMPLATE_INSTANCE(func, templateParam) cpp_python_embedder::FunctionPtrTypePair<decltype(&##func<_PY_EXPORTER_REMOVE_PARENTHESIS(templateParam)>), &##func<_PY_EXPORTER_REMOVE_PARENTHESIS(templateParam)>>,
+#define _PY_EXPORTER_TEMPLATE_INSTANCE(func, templateParam) cpp_python_embedder::FunctionPtrTypePair<decltype(&##func<_PY_EXPORTER_REMOVE_PARENTHESIS(templateParam)>), &##func<_PY_EXPORTER_REMOVE_PARENTHESIS(templateParam)>, cpp_python_embedder::TypeList<_PY_EXPORTER_REMOVE_PARENTHESIS(templateParam)>>,
 #define _PY_EXPORTER_TEMPLATE_INSTANCE_EXPANDER(_, func, templateParam) _PY_EXPORTER_TEMPLATE_INSTANCE(func, templateParam)
 #define _PY_EXPORTER_HEADS_TEMPLATE_SPECIALIZES(func, seq) BOOST_PP_SEQ_FOR_EACH(_PY_EXPORTER_TEMPLATE_INSTANCE_EXPANDER, func, seq)
-#define _PY_EXPORTER_TEMPLATE_INSTANCES(func, seq) _PY_EXPORTER_HEADS_TEMPLATE_SPECIALIZES(func, BOOST_PP_SEQ_POP_BACK(seq)) cpp_python_embedder::FunctionPtrTypePair<decltype(&##func<_PY_EXPORTER_REMOVE_PARENTHESIS(BOOST_PP_SEQ_HEAD(BOOST_PP_SEQ_REVERSE(seq)))>), &##func<_PY_EXPORTER_REMOVE_PARENTHESIS(BOOST_PP_SEQ_HEAD(BOOST_PP_SEQ_REVERSE(seq)))>>
+#define _PY_EXPORTER_TEMPLATE_INSTANCES(func, seq) _PY_EXPORTER_HEADS_TEMPLATE_SPECIALIZES(func, BOOST_PP_SEQ_POP_BACK(seq)) cpp_python_embedder::FunctionPtrTypePair<decltype(&##func<_PY_EXPORTER_REMOVE_PARENTHESIS(BOOST_PP_SEQ_HEAD(BOOST_PP_SEQ_REVERSE(seq)))>), &##func<_PY_EXPORTER_REMOVE_PARENTHESIS(BOOST_PP_SEQ_HEAD(BOOST_PP_SEQ_REVERSE(seq)))>, cpp_python_embedder::TypeList<_PY_EXPORTER_REMOVE_PARENTHESIS(BOOST_PP_SEQ_HEAD(BOOST_PP_SEQ_REVERSE(seq)))>>
 
 
 
@@ -90,7 +90,7 @@ using xxhash::literals::operator ""_xxh64;
 	cpp_python_embedder::Exporter<#moduleName##_xxh64>::RegisterMemberFunctionAsStaticFunctionLambda<decltype(&##T##::##func), &##T##::##func, decltype(&decltype(T##funcName##moduleName##lambda##)::operator()), &decltype(T##funcName##moduleName##lambda##)::operator(), decltype(&##T##funcName##moduleName##lambda), &##T##funcName##moduleName##lambda>(#funcName)
 #define PY_EXPORT_MEMBER_FUNCTION_NAME(T, func, funcName, moduleName) cpp_python_embedder::Exporter<#moduleName##_xxh64>::RegisterMemberFunction<decltype(&##T##::##func), &##T##::##func, T>(#funcName)
 
-#define PY_EXPORT_TEMPLATE_GLOBAL_FUNCTION_NAME(func, funcName, moduleName, templateParamSeq) cpp_python_embedder::Exporter<#moduleName##_xxh64>::RegisterTemplateFunction<_PY_EXPORTER_TEMPLATE_INSTANCES(func, templateParamSeq)>(#funcName)
+#define PY_EXPORT_TEMPLATE_GLOBAL_FUNCTION_NAME(func, funcName, moduleName, templateParamSeq) cpp_python_embedder::Exporter<#moduleName##_xxh64>::RegisterTemplateFunction<#funcName##_xxh64, _PY_EXPORTER_TEMPLATE_INSTANCES(func, templateParamSeq)>(#funcName)
 #define PY_EXPORT_TEMPLATE_STATIC_FUNCTION_NAME(T, func, funcName, moduleName, templateParamSeq) PY_EXPORT_TEMPLATE_GLOBAL_FUNCTION_NAME(T##::##func, funcName, moduleName, templateParamSeq)
 #define PY_EXPORT_TEMPLATE_MEMBER_FUNCTION_AS_STATIC_FUNCTION_NAME(T, func, funcName, instanceReturner, moduleName, templateParamSeq)  // TODO
 #define PY_EXPORT_TEMPLATE_MEMBER_FUNCTION_NAME(T, func, funcName, moduleName, templateParamSeq)  // TODO
@@ -128,6 +128,7 @@ namespace cpp_python_embedder
 // TODO: (possibly) Support template https://stackoverflow.com/questions/38843599/function-templates-in-python
 
 // TODO: Remove duplicate codes using constexpr function or macro
+// TODO: Separate files and #include
 // TODO: Memory Leak (INCREF, DECREF) https://docs.python.org/3/c-api/intro.html#objects-types-and-reference-counts
 // http://edcjones.tripod.com/refcount.html
 
@@ -298,11 +299,12 @@ inline namespace python_embedder_detail
 
 
 
-	template<typename FunctionPtrType_, FunctionPtrType_ FunctionPtr_>
+	template<typename FunctionPtrType_, FunctionPtrType_ FunctionPtr_, typename TemplateParameters_>
 	struct FunctionPtrTypePair
 	{
 		using FunctionPtrType = FunctionPtrType_;
 		static constexpr FunctionPtrType functionPtr = FunctionPtr_;
+		using TemplateParameters = TemplateParameters_;
 	};
 
 
@@ -385,9 +387,8 @@ inline namespace python_embedder_detail
 
 	
 	template<typename T>
-	class Converter
+	struct Converter
 	{
-	public:
 		static int ParseValue(PyObject* pyObject, T* pT);
 
 		static PyObject* BuildValue(T* pT);
@@ -401,21 +402,22 @@ inline namespace python_embedder_detail
 	template<typename T>
 	[[nodiscard]] static constexpr int get_member_type_number();
 
+	template<typename T>
+	[[nodiscard]] static constexpr const char* get_template_parameter_type_name();
+
 	
 
 	template<typename FunctionPtrType, FunctionPtrType FunctionPtr, typename ReturnType, size_t ParameterCount, typename ParameterTypeTuple>
-	class FunctionDispatcher
+	struct FunctionDispatcher
 	{
-	public:
 		static PyObject* ReplicatedFunction(PyObject* self, PyObject* args);
 	};
 
 	
 	template<typename FunctionPtrType, FunctionPtrType FunctionPtr, typename ReturnType, size_t ParameterCount, typename ParameterTypeTuple,
 		typename InstanceReturnFunctionType, InstanceReturnFunctionType InstanceReturnFunction, typename InstanceReturnFunctionReturnType, size_t InstanceReturnFunctionParameterCount, typename InstanceReturnFunctionParameterTuple>
-	class MemberFunctionAsStaticFunctionDispatcher
+	struct MemberFunctionAsStaticFunctionDispatcher
 	{
-	public:
 		static PyObject* ReplicatedFunction(PyObject* self, PyObject* args);
 	};
 
@@ -424,32 +426,29 @@ inline namespace python_embedder_detail
 		typename InstanceReturnFunctionType, InstanceReturnFunctionType InstanceReturnFunction, typename InstanceReturnFunctionReturnType, size_t InstanceReturnFunctionParameterCount, typename InstanceReturnFunctionParameterTypeTuple,
 		typename LambdaPtrType, LambdaPtrType LambdaPtr
 	>
-		class MemberFunctionAsStaticFunctionLambdaDispatcher
+	struct MemberFunctionAsStaticFunctionLambdaDispatcher
 	{
-	public:
 		static PyObject* ReplicatedFunction(PyObject* self, PyObject* args);
 	};
 
 
 	template<typename FunctionPtrType, FunctionPtrType FunctionPtr, typename ReturnType, size_t ParameterCount, typename ParameterTypeTuple, typename Class>
-	class MemberFunctionDispatcher
+	struct MemberFunctionDispatcher
 	{
-	public:
 		static PyObject* ReplicatedFunction(PyObject* self, PyObject* args);
 	};
 
 
 	template<typename FunctionPtrType, FunctionPtrType FunctionPtr, typename ReturnType, size_t ParameterCount, typename ParameterTypeTuple, typename Class, EOperatorType Operator>
-	class MemberOperatorDispatcher
+	struct MemberOperatorDispatcher
 	{
-	public:
 		static PyObject* BinaryReplicatedFunction(PyObject* self, PyObject* args);
 		static PyObject* UnaryReplicatedFunction(PyObject* self);
 	};
 
 
-	template<typename ReturnType>
-	class TemplateFunctionDispatcher
+	template<unsigned long long FunctionNameHashValue>
+	struct TemplateFunctionDispatcher
 	{
 		static PyObject* ReplicatedFunction(PyObject* self, PyObject* args);
 
@@ -489,7 +488,7 @@ public:
 	static void RegisterMemberOperator(EOperatorType operatorType);
 
 
-	template<typename... FunctionPtrTypePairs>
+	template<unsigned long long FunctionNameHashValue, typename... FunctionPtrTypePairs>
 	static void RegisterTemplateFunction(const char* functionName);
 
 
@@ -1095,49 +1094,18 @@ PyObject* MemberOperatorDispatcher<FunctionPtrType, FunctionPtr, ReturnType, Par
 
 
 	
-template<typename ReturnType>
-PyObject* TemplateFunctionDispatcher<ReturnType>::ReplicatedFunction(PyObject* self, PyObject* args)
+template<unsigned long long FunctionNameHashValue>
+PyObject* TemplateFunctionDispatcher<FunctionNameHashValue>::ReplicatedFunction(PyObject* self, PyObject* args)
 {
-	PyObject* const types = PyTuple_GetItem(args, 0);
-
-	std::string instance;
-	
-	// TODO: parse the types string
+	const char* templateParameterTypes;
+	PyArg_Parse(PyTuple_GetItem(args, 0), "s", &templateParameterTypes);
 
 	PyObject* const realArgs = PyTuple_GetSlice(args, 1, PySequence_Length(args));
 
-
-	const auto funcToCall = instantiatedFunctions.at(xxhash::xxh64(instance.c_str(), instance.size() + 1, XXHASH_CX_XXH64_SEED));
+	const auto funcToCall = instantiatedFunctions.at(xxhash::xxh64(templateParameterTypes, std::strlen(templateParameterTypes) + 1, XXHASH_CX_XXH64_SEED));
 	
-	PyObject* toReturn;
-	if constexpr (std::is_same_v<ReturnType, void>)
-	{
-		funcToCall(self, args);
-
-		toReturn = Py_None;
-	}
-	else
-	{
-		ReturnType returnValue = funcToCall(self, args);
-
-		if constexpr (std::is_fundamental_v<ReturnType> || std::is_same_v<ReturnType, const char*>)
-		{
-			const char* format = get_argument_type_format_string<ReturnType>();
-
-			toReturn = Py_BuildValue(format, returnValue);
-		}
-		else if constexpr (std::is_same_v<ReturnType, std::string>)
-		{
-			toReturn = Py_BuildValue("s", returnValue.c_str());
-		}
-		else
-		{
-			toReturn = Py_BuildValue("O&", &Converter<ReturnType>::BuildValue, returnValue);
-		}
-	}
+	PyObject* const toReturn = funcToCall(self, realArgs);
 	Py_DECREF(realArgs);
-	
-	Py_INCREF(toReturn);
 	return toReturn;
 }
 
@@ -1277,6 +1245,82 @@ constexpr int python_embedder_detail::get_member_type_number()
 	{
 		_ASSERT(false);
 		return -1;
+	}
+}
+
+	
+
+template <typename T>
+constexpr const char* python_embedder_detail::get_template_parameter_type_name()
+{
+	if constexpr (std::is_same_v<T, bool>)
+	{
+		return "bool";
+	}
+	else if constexpr (std::is_same_v<T, char>)
+	{
+		return "char";
+	}
+	else if constexpr (std::is_same_v<T, unsigned char>)
+	{
+		return "unsigned char";
+	}
+	else if constexpr (std::is_same_v<T, short>)
+	{
+		return "short";
+	}
+	else if constexpr (std::is_same_v<T, unsigned short>)
+	{
+		return "unsigned short";
+	}
+	else if constexpr (std::is_same_v<T, int>)
+	{
+		return "int";
+	}
+	else if constexpr (std::is_same_v<T, unsigned int>)
+	{
+		return "unsigned int";
+	}
+	else if constexpr (std::is_same_v<T, long>)
+	{
+		return "long";
+	}
+	else if constexpr (std::is_same_v<T, unsigned long>)
+	{
+		return "unsigned long";
+	}
+	else if constexpr (std::is_same_v<T, long long>)
+	{
+		return "long long";
+	}
+	else if constexpr (std::is_same_v<T, unsigned long long>)
+	{
+		return "unsigned long long";
+	}
+	else if constexpr (std::is_same_v<T, float>)
+	{
+		return "float";
+	}
+	else if constexpr (std::is_same_v<T, double>)
+	{
+		return "double";
+	}
+	else if constexpr (std::is_same_v<T, long double>)
+	{
+		return "long double";
+	}
+	else if constexpr (std::is_same_v<T, const char*>)
+	{
+		return "const char*";
+	}
+	else if constexpr (std::is_same_v<T, std::string>)
+	{
+		return "string";
+	}
+	else
+	{
+		_ASSERT(false);
+		return nullptr;
 	}
 }
 
@@ -1554,7 +1598,7 @@ void Exporter<ModuleNameHashValue>::RegisterMemberOperator(const EOperatorType o
 
 	
 template <unsigned long long ModuleNameHashValue>
-template <typename... FunctionPtrTypePairs>
+template <unsigned long long FunctionNameHashValue, typename... FunctionPtrTypePairs>
 void Exporter<ModuleNameHashValue>::RegisterTemplateFunction(const char* functionName)
 {
 	using namespace boost::function_types;
@@ -1562,18 +1606,55 @@ void Exporter<ModuleNameHashValue>::RegisterTemplateFunction(const char* functio
 	using Pairs = TypeList<FunctionPtrTypePairs...>;
 	constexpr size_t pairCount = std::tuple_size_v<Pairs>;
 
-	using ReturnType = typename result_type<typename std::tuple_element_t<0, Pairs>::FunctionPtrType>::type;
-	
-	using InstantiatedDispatcher = TemplateFunctionDispatcher<ReturnType>;
+	using InstantiatedDispatcher = TemplateFunctionDispatcher<FunctionNameHashValue>;
 	auto& functionMap = InstantiatedDispatcher::instantiatedFunctions;
 
 	boost::mp11::mp_for_each<boost::mp11::mp_iota_c<pairCount>>([&](auto i)
 		{
-			// iterate over the template parameters, get the str of the typename, concat, hash and register to the map
+			std::string functionSignatureString;
+		
+			using Pair = std::tuple_element_t<i, Pairs>;
+			using FunctionPtrType = typename Pair::FunctionPtrType;
+			constexpr FunctionPtrType functionPtr = Pair::functionPtr;
+			using TemplateParameters = typename Pair::TemplateParameters;
+
+			static_assert(is_function_pointer<FunctionPtrType>::value);
+			static_assert(!is_member_function_pointer<FunctionPtrType>::value);
+
+			constexpr size_t parameterCount = function_arity<FunctionPtrType>::value;
+			using ReturnType = typename result_type<FunctionPtrType>::type;
+			using ParameterTypes = parameter_types<FunctionPtrType>;
+			using ParameterTypeTuple = ParameterTuple<ParameterTypes, parameterCount>;
+			static_assert(ValidityChecker<is_supported_parameter_type, ParameterTypeTuple, parameterCount>::value);
+			static_assert(is_supported_return_type_v<ReturnType>);
+		
+			using InstantiatedDispatcher = FunctionDispatcher<FunctionPtrType, functionPtr, ReturnType, parameterCount, ParameterTypeTuple>;
+
+			boost::mp11::mp_for_each<boost::mp11::mp_iota_c<std::tuple_size_v<TemplateParameters>>>([&](auto j)
+				{
+					using TemplateParameter = std::tuple_element_t<j, TemplateParameters>;
+
+					if constexpr (std::is_fundamental_v<TemplateParameter> || std::is_same_v<TemplateParameter, const char*>)
+					{
+						functionSignatureString += get_template_parameter_type_name<TemplateParameter>();
+					}
+					else
+					{
+						functionSignatureString += PyExportedClass<TemplateParameter>::typeInfo.tp_name;
+					}
+					functionSignatureString += ", ";
+				}
+			);
+		
+			// Removing trailing ", "
+			functionSignatureString.pop_back();
+			functionSignatureString.pop_back();
+		
+			functionMap[xxhash::xxh64(functionSignatureString.c_str(), functionSignatureString.size() + 1, XXHASH_CX_XXH64_SEED)] = &InstantiatedDispatcher::ReplicatedFunction;
 		}
 	);
 
-	// TODO: How to distinguish different functions with same template parameter list?
+	// TODO: How to distinguish different functions with same template parameter list of static / member?
 	// maybe concat the function name at the front
 	
 	methods.push_back(PyMethodDef{ functionName, &InstantiatedDispatcher::ReplicatedFunction, METH_VARARGS, nullptr });
