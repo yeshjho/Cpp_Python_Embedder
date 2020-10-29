@@ -58,28 +58,28 @@
 using xxhash::literals::operator ""_xxh64;
 
 
-#define PY_EXPORTER_FIELD(T, memberName) { #memberName, cpp_python_embedder::get_member_type_number<decltype(T::##memberName)>(), offsetof(cpp_python_embedder::PyExportedClass<T>, t) + offsetof(T, memberName), 0, nullptr },
-#define PY_EXPORTER_FIELD_EXPANDER(_, T, memberName) PY_EXPORTER_FIELD(T, memberName)
-#define PY_EXPORTER_FIELDS(T, seq) BOOST_PP_SEQ_FOR_EACH(PY_EXPORTER_FIELD_EXPANDER, T, seq) { nullptr, 0, 0, 0, nullptr }
+#define _PY_EXPORTER_FIELD(T, fieldName) { #fieldName, cpp_python_embedder::get_member_type_number<decltype(T::##fieldName)>(), offsetof(cpp_python_embedder::PyExportedClass<T>, t) + offsetof(T, fieldName), 0, nullptr },
+#define _PY_EXPORTER_FIELD_EXPANDER(_, T, fieldName) _PY_EXPORTER_FIELD(T, fieldName)
+#define _PY_EXPORTER_FIELDS(T, seq) BOOST_PP_SEQ_FOR_EACH(_PY_EXPORTER_FIELD_EXPANDER, T, seq) { nullptr, 0, 0, 0, nullptr }
 
-#define PY_EXPORTER_FIELD_TYPE(T, memberName) decltype(T::memberName),
-#define PY_EXPORTER_FIELD_TYPE_EXPANDER(_, T, memberName) PY_EXPORTER_FIELD_TYPE(T, memberName)
-#define PY_EXPORTER_HEADS_FIELD_TYPES(T, seq) BOOST_PP_SEQ_FOR_EACH(PY_EXPORTER_FIELD_TYPE_EXPANDER, T, seq)
-#define PY_EXPORTER_FIELD_TYPES(T, seq) PY_EXPORTER_HEADS_FIELD_TYPES(T, BOOST_PP_SEQ_POP_BACK(seq)) decltype(T::BOOST_PP_SEQ_HEAD(BOOST_PP_SEQ_REVERSE(seq)))
+#define _PY_EXPORTER_FIELD_TYPE(T, fieldName) decltype(T::fieldName),
+#define _PY_EXPORTER_FIELD_TYPE_EXPANDER(_, T, fieldName) _PY_EXPORTER_FIELD_TYPE(T, fieldName)
+#define _PY_EXPORTER_HEADS_FIELD_TYPES(T, seq) BOOST_PP_SEQ_FOR_EACH(_PY_EXPORTER_FIELD_TYPE_EXPANDER, T, seq)
+#define _PY_EXPORTER_FIELD_TYPES(T, seq) _PY_EXPORTER_HEADS_FIELD_TYPES(T, BOOST_PP_SEQ_POP_BACK(seq)) decltype(T::BOOST_PP_SEQ_HEAD(BOOST_PP_SEQ_REVERSE(seq)))
 
-#define PY_EXPORTER_FIELD_OFFSET(T, memberName) offsetof(T, memberName),
-#define PY_EXPORTER_FIELD_OFFSET_EXPANDER(_, T, memberName) PY_EXPORTER_FIELD_OFFSET(T, memberName)
-#define PY_EXPORTER_HEADS_FIELD_OFFSETS(T, seq) BOOST_PP_SEQ_FOR_EACH(PY_EXPORTER_FIELD_OFFSET_EXPANDER, T, seq)
-#define PY_EXPORTER_FIELD_OFFSETS(T, seq) PY_EXPORTER_HEADS_FIELD_OFFSETS(T, BOOST_PP_SEQ_POP_BACK(seq)) offsetof(T, BOOST_PP_SEQ_HEAD(BOOST_PP_SEQ_REVERSE(seq)))
+#define _PY_EXPORTER_FIELD_OFFSET(T, fieldName) offsetof(T, fieldName),
+#define _PY_EXPORTER_FIELD_OFFSET_EXPANDER(_, T, fieldName) _PY_EXPORTER_FIELD_OFFSET(T, fieldName)
+#define _PY_EXPORTER_HEADS_FIELD_OFFSETS(T, seq) BOOST_PP_SEQ_FOR_EACH(_PY_EXPORTER_FIELD_OFFSET_EXPANDER, T, seq)
+#define _PY_EXPORTER_FIELD_OFFSETS(T, seq) _PY_EXPORTER_HEADS_FIELD_OFFSETS(T, BOOST_PP_SEQ_POP_BACK(seq)) offsetof(T, BOOST_PP_SEQ_HEAD(BOOST_PP_SEQ_REVERSE(seq)))
 
-#define PY_EXPORTER_REMOVE_PARENTHESIS_EXPAND_HELPER(...) __VA_ARGS__
-#define PY_EXPORTER_REMOVE_PARENTHESIS_HELPER(x) x
-#define PY_EXPORTER_REMOVE_PARENTHESIS(x) PY_EXPORTER_REMOVE_PARENTHESIS_HELPER(PY_EXPORTER_REMOVE_PARENTHESIS_EXPAND_HELPER x)
+#define _PY_EXPORTER_REMOVE_PARENTHESIS_EXPAND_HELPER(...) __VA_ARGS__
+#define _PY_EXPORTER_REMOVE_PARENTHESIS_HELPER(x) x
+#define _PY_EXPORTER_REMOVE_PARENTHESIS(x) _PY_EXPORTER_REMOVE_PARENTHESIS_HELPER(_PY_EXPORTER_REMOVE_PARENTHESIS_EXPAND_HELPER x)
 
-#define PY_EXPORTER_TEMPLATE_SPECIALIZE(func, templateParam) cpp_python_embedder::FunctionPtrTypePair<decltype(&##func<PY_EXPORTER_REMOVE_PARENTHESIS(templateParam)>), &##func<PY_EXPORTER_REMOVE_PARENTHESIS(templateParam)>>,
-#define PY_EXPORTER_TEMPLATE_SPECIALIZE_EXPANDER(_, func, templateParam) PY_EXPORTER_TEMPLATE_SPECIALIZE(func, templateParam)
-#define PY_EXPORTER_HEADS_TEMPLATE_SPECIALIZES(func, seq) BOOST_PP_SEQ_FOR_EACH(PY_EXPORTER_TEMPLATE_SPECIALIZE_EXPANDER, func, seq)
-#define PY_EXPORTER_TEMPLATE_SPECIALIZES(func, seq) PY_EXPORTER_HEADS_TEMPLATE_SPECIALIZES(func, BOOST_PP_SEQ_POP_BACK(seq)) cpp_python_embedder::FunctionPtrTypePair<decltype(&##func<PY_EXPORTER_REMOVE_PARENTHESIS(BOOST_PP_SEQ_HEAD(BOOST_PP_SEQ_REVERSE(seq)))>), &##func<PY_EXPORTER_REMOVE_PARENTHESIS(BOOST_PP_SEQ_HEAD(BOOST_PP_SEQ_REVERSE(seq)))>>
+#define _PY_EXPORTER_TEMPLATE_INSTANCE(func, templateParam) cpp_python_embedder::FunctionPtrTypePair<decltype(&##func<_PY_EXPORTER_REMOVE_PARENTHESIS(templateParam)>), &##func<_PY_EXPORTER_REMOVE_PARENTHESIS(templateParam)>>,
+#define _PY_EXPORTER_TEMPLATE_INSTANCE_EXPANDER(_, func, templateParam) _PY_EXPORTER_TEMPLATE_INSTANCE(func, templateParam)
+#define _PY_EXPORTER_HEADS_TEMPLATE_SPECIALIZES(func, seq) BOOST_PP_SEQ_FOR_EACH(_PY_EXPORTER_TEMPLATE_INSTANCE_EXPANDER, func, seq)
+#define _PY_EXPORTER_TEMPLATE_INSTANCES(func, seq) _PY_EXPORTER_HEADS_TEMPLATE_SPECIALIZES(func, BOOST_PP_SEQ_POP_BACK(seq)) cpp_python_embedder::FunctionPtrTypePair<decltype(&##func<_PY_EXPORTER_REMOVE_PARENTHESIS(BOOST_PP_SEQ_HEAD(BOOST_PP_SEQ_REVERSE(seq)))>), &##func<_PY_EXPORTER_REMOVE_PARENTHESIS(BOOST_PP_SEQ_HEAD(BOOST_PP_SEQ_REVERSE(seq)))>>
 
 
 
@@ -90,12 +90,12 @@ using xxhash::literals::operator ""_xxh64;
 	cpp_python_embedder::Exporter<#moduleName##_xxh64>::RegisterMemberFunctionAsStaticFunctionLambda<decltype(&##T##::##func), &##T##::##func, decltype(&decltype(T##funcName##moduleName##lambda##)::operator()), &decltype(T##funcName##moduleName##lambda##)::operator(), decltype(&##T##funcName##moduleName##lambda), &##T##funcName##moduleName##lambda>(#funcName)
 #define PY_EXPORT_MEMBER_FUNCTION_NAME(T, func, funcName, moduleName) cpp_python_embedder::Exporter<#moduleName##_xxh64>::RegisterMemberFunction<decltype(&##T##::##func), &##T##::##func, T>(#funcName)
 
-#define PY_EXPORT_TEMPLATE_GLOBAL_FUNCTION_NAME(func, funcName, moduleName, templateParamSeq) cpp_python_embedder::Exporter<#moduleName##_xxh64>::RegisterTemplateFunction<PY_EXPORTER_TEMPLATE_SPECIALIZES(func, templateParamSeq)>(#funcName)
+#define PY_EXPORT_TEMPLATE_GLOBAL_FUNCTION_NAME(func, funcName, moduleName, templateParamSeq) cpp_python_embedder::Exporter<#moduleName##_xxh64>::RegisterTemplateFunction<_PY_EXPORTER_TEMPLATE_INSTANCES(func, templateParamSeq)>(#funcName)
 #define PY_EXPORT_TEMPLATE_STATIC_FUNCTION_NAME(T, func, funcName, moduleName, templateParamSeq) PY_EXPORT_TEMPLATE_GLOBAL_FUNCTION_NAME(T##::##func, funcName, moduleName, templateParamSeq)
 #define PY_EXPORT_TEMPLATE_MEMBER_FUNCTION_AS_STATIC_FUNCTION_NAME(T, func, funcName, instanceReturner, moduleName, templateParamSeq)  // TODO
 #define PY_EXPORT_TEMPLATE_MEMBER_FUNCTION_NAME(T, func, funcName, moduleName, templateParamSeq)  // TODO
 
-#define PY_EXPORT_TYPE_NAME(T, typeName, moduleName, fieldSeq) cpp_python_embedder::Exporter<#moduleName##_xxh64>::RegisterType<T, std::integer_sequence<size_t, PY_EXPORTER_FIELD_OFFSETS(T, fieldSeq)>, PY_EXPORTER_FIELD_TYPES(T, fieldSeq)>(#typeName, { PY_EXPORTER_FIELDS(T, fieldSeq) })
+#define PY_EXPORT_TYPE_NAME(T, typeName, moduleName, fieldSeq) cpp_python_embedder::Exporter<#moduleName##_xxh64>::RegisterType<T, std::integer_sequence<size_t, _PY_EXPORTER_FIELD_OFFSETS(T, fieldSeq)>, _PY_EXPORTER_FIELD_TYPES(T, fieldSeq)>(#typeName, { _PY_EXPORTER_FIELDS(T, fieldSeq) })
 
 #define PY_EXPORT_MODULE_NAME(moduleName, newName) cpp_python_embedder::Exporter<#moduleName##_xxh64>::Export(#newName)
 
@@ -127,6 +127,7 @@ namespace cpp_python_embedder
 // TODO: Support operator overloading https://docs.python.org/3/c-api/typeobj.html#number-object-structures tp_as_number
 // TODO: (possibly) Support template https://stackoverflow.com/questions/38843599/function-templates-in-python
 
+// TODO: Remove duplicate codes using constexpr function or macro
 // TODO: Memory Leak (INCREF, DECREF) https://docs.python.org/3/c-api/intro.html#objects-types-and-reference-counts
 // http://edcjones.tripod.com/refcount.html
 
