@@ -1,5 +1,5 @@
 // This should be included before any std header
-#include "../../CppPythonEmbedder.h"
+#include "../../CppPythonEmbedder.hpp"
 #include <glm/glm.hpp>
 #include <iostream>
 
@@ -83,8 +83,19 @@ void j(glm::vec3 v)
 }
 
 
+class T
+{
+public:
+	template<typename A, typename B, typename C>
+	static void f();
+};
+
+
 int main()
 {
+	PY_EXPORT_TEMPLATE_STATIC_FUNCTION_NAME(T, f, qwer, test, ((int, float, double))((std::string, long, char))((unsigned char, long long, short)));
+
+	
 	// https://docs.python.org/3/extending/extending.html
 	// https://www.codeproject.com/Articles/820116/Embedding-Python-program-in-a-C-Cplusplus-code
 	//

@@ -72,20 +72,37 @@ using xxhash::literals::operator ""_xxh64;
 #define PY_EXPORTER_HEADS_FIELD_OFFSETS(T, seq) BOOST_PP_SEQ_FOR_EACH(PY_EXPORTER_FIELD_OFFSET_EXPANDER, T, seq)
 #define PY_EXPORTER_FIELD_OFFSETS(T, seq) PY_EXPORTER_HEADS_FIELD_OFFSETS(T, BOOST_PP_SEQ_POP_BACK(seq)) offsetof(T, BOOST_PP_SEQ_HEAD(BOOST_PP_SEQ_REVERSE(seq)))
 
+#define PY_EXPORTER_REMOVE_PARENTHESIS_EXPAND_HELPER(...) __VA_ARGS__
+#define PY_EXPORTER_REMOVE_PARENTHESIS_HELPER(x) x
+#define PY_EXPORTER_REMOVE_PARENTHESIS(x) PY_EXPORTER_REMOVE_PARENTHESIS_HELPER(PY_EXPORTER_REMOVE_PARENTHESIS_EXPAND_HELPER x)
 
-#define PY_EXPORT_STATIC_FUNCTION_NAME(T, func, funcName, moduleName) cpp_python_embedder::Exporter<#moduleName##_xxh64>::RegisterFunction<decltype(&##T##::##func), &##T##::##func>(#funcName)
-#define PY_EXPORT_STATIC_FUNCTION(T, func, moduleName) PY_EXPORT_STATIC_FUNCTION_NAME(T, func, func, moduleName)
+#define PY_EXPORTER_TEMPLATE_SPECIALIZE(func, templateParam) cpp_python_embedder::FunctionPtrTypePair<decltype(&##func<PY_EXPORTER_REMOVE_PARENTHESIS(templateParam)>), &##func<PY_EXPORTER_REMOVE_PARENTHESIS(templateParam)>>,
+#define PY_EXPORTER_TEMPLATE_SPECIALIZE_EXPANDER(_, func, templateParam) PY_EXPORTER_TEMPLATE_SPECIALIZE(func, templateParam)
+#define PY_EXPORTER_HEADS_TEMPLATE_SPECIALIZES(func, seq) BOOST_PP_SEQ_FOR_EACH(PY_EXPORTER_TEMPLATE_SPECIALIZE_EXPANDER, func, seq)
+#define PY_EXPORTER_TEMPLATE_SPECIALIZES(func, seq) PY_EXPORTER_HEADS_TEMPLATE_SPECIALIZES(func, BOOST_PP_SEQ_POP_BACK(seq)) cpp_python_embedder::FunctionPtrTypePair<decltype(&##func<PY_EXPORTER_REMOVE_PARENTHESIS(BOOST_PP_SEQ_HEAD(BOOST_PP_SEQ_REVERSE(seq)))>), &##func<PY_EXPORTER_REMOVE_PARENTHESIS(BOOST_PP_SEQ_HEAD(BOOST_PP_SEQ_REVERSE(seq)))>>
+
+
 #define PY_EXPORT_GLOBAL_FUNCTION_NAME(func, funcName, moduleName) cpp_python_embedder::Exporter<#moduleName##_xxh64>::RegisterFunction<decltype(&##func), &##func>(#funcName)
-#define PY_EXPORT_GLOBAL_FUNCTION(func, moduleName) PY_EXPORT_GLOBAL_FUNCTION_NAME(func, func, moduleName)
+#define PY_EXPORT_STATIC_FUNCTION_NAME(T, func, funcName, moduleName) cpp_python_embedder::Exporter<#moduleName##_xxh64>::RegisterFunction<decltype(&##T##::##func), &##T##::##func>(#funcName)
 #define PY_EXPORT_MEMBER_FUNCTION_AS_STATIC_FUNCTION_NAME(T, func, funcName, instanceReturner, moduleName) cpp_python_embedder::Exporter<#moduleName##_xxh64>::RegisterMemberFunctionAsStaticFunction<decltype(&##T##::##func), &##T##::##func, decltype(&##instanceReturner), &##instanceReturner>(#funcName)
-#define PY_EXPORT_MEMBER_FUNCTION_AS_STATIC_FUNCTION(T, func, instanceReturner, moduleName) PY_EXPORT_MEMBER_FUNCTION_AS_STATIC_FUNCTION_NAME(T, func, func, instanceReturner, moduleName)
 #define PY_EXPORT_MEMBER_FUNCTION_NAME(T, func, funcName, moduleName) cpp_python_embedder::Exporter<#moduleName##_xxh64>::RegisterMemberFunction<decltype(&##T##::##func), &##T##::##func, T>(#funcName)
-#define PY_EXPORT_MEMBER_FUNCTION(T, func, moduleName) PY_EXPORT_MEMBER_FUNCTION_NAME(T, func, func, moduleName)
+
+#define PY_EXPORT_TEMPLATE_STATIC_FUNCTION_NAME(T, func, funcName, moduleName, templateParamSeq) cpp_python_embedder::Exporter<#moduleName##_xxh64>::RegisterTemplateFunction<PY_EXPORTER_TEMPLATE_SPECIALIZES(T##::##func, templateParamSeq)>(#funcName)
 
 #define PY_EXPORT_TYPE_NAME(T, typeName, moduleName, fieldSeq) cpp_python_embedder::Exporter<#moduleName##_xxh64>::RegisterType<T, std::integer_sequence<size_t, PY_EXPORTER_FIELD_OFFSETS(T, fieldSeq)>, PY_EXPORTER_FIELD_TYPES(T, fieldSeq)>(#typeName, { PY_EXPORTER_FIELDS(T, fieldSeq) })
-#define PY_EXPORT_TYPE(T, moduleName, fieldSeq) PY_EXPORT_TYPE_NAME(T, T, moduleName, fieldSeq)
 
 #define PY_EXPORT_MODULE_NAME(moduleName, newName) cpp_python_embedder::Exporter<#moduleName##_xxh64>::Export(#newName)
+
+
+#define PY_EXPORT_GLOBAL_FUNCTION(func, moduleName) PY_EXPORT_GLOBAL_FUNCTION_NAME(func, func, moduleName)
+#define PY_EXPORT_STATIC_FUNCTION(T, func, moduleName) PY_EXPORT_STATIC_FUNCTION_NAME(T, func, func, moduleName)
+#define PY_EXPORT_MEMBER_FUNCTION_AS_STATIC_FUNCTION(T, func, instanceReturner, moduleName) PY_EXPORT_MEMBER_FUNCTION_AS_STATIC_FUNCTION_NAME(T, func, func, instanceReturner, moduleName)
+#define PY_EXPORT_MEMBER_FUNCTION(T, func, moduleName) PY_EXPORT_MEMBER_FUNCTION_NAME(T, func, func, moduleName)
+
+#define PY_EXPORT_TEMPLATE_STATIC_FUNCTION(T, func, moduleName, templateParamSeq) PY_EXPORT_TEMPLATE_STATIC_FUNCTION_NAME(T, func, func, moduleName, templateParamSeq)
+
+#define PY_EXPORT_TYPE(T, moduleName, fieldSeq) PY_EXPORT_TYPE_NAME(T, T, moduleName, fieldSeq)
+
 #define PY_EXPORT_MODULE(moduleName) PY_EXPORT_MODULE_NAME(moduleName, moduleName)
 
 
@@ -99,11 +116,84 @@ namespace cpp_python_embedder
 // TODO: Support user-defined data types as field
 // TODO: Support array as field (python list)
 // TODO: Support operator overloading https://docs.python.org/3/c-api/typeobj.html#number-object-structures tp_as_number
+// TODO: (possibly) Support template https://stackoverflow.com/questions/38843599/function-templates-in-python
 
 // TODO: Memory Leak (INCREF, DECREF) https://docs.python.org/3/c-api/intro.html#objects-types-and-reference-counts
 // http://edcjones.tripod.com/refcount.html
 
 
+	enum class [[nodiscard]] EOperatorType
+	{
+		// operator +, nb_add
+		ADD,
+		// operator -, nb_subtract
+		SUBTRACT,
+		// operator *, nb_multiply
+		MULTIPLY,
+		// operator /, nb_true_divide
+		DIVIDE,
+		// operator %, nb_remainder
+		REMAINDER,
+		// operator +, nb_positive
+		POSITIVE,
+		// operator -, nb_negative
+		NEGATIVE,
+		// operator ^, nb_xor
+		XOR,
+		// operator &, nb_and
+		AND,
+		// operator |, nb_or
+		OR,
+		// operator ~, nb_invert
+		INVERT,
+		// operator <<, nb_lshift
+		LEFT_SHIFT,
+		// operator >>, nb_rshift
+		RIGHT_SHIFT,
+
+		// operator +=, nb_inplace_add
+		INPLACE_ADD,
+		// operator -=, nb_inplace_subtract
+		INPLACE_SUBTRACT,
+		// operator *=, nb_inplace_multiply
+		INPLACE_MULTIPLY,
+		// operator /=, nb_inplace_true_divide
+		INPLACE_DIVIDE,
+		// operator %=, nb_inplace_remainder
+		INPLACE_REMAINDER,
+		// operator ^=, nb_inplace_xor
+		INPLACE_XOR,
+		// operator &=, nb_inplace_and
+		INPLACE_AND,
+		// operator |=, nb_inplace_or
+		INPLACE_OR,
+		// operator <<=, nb_inplace_lshift
+		INPLACE_LEFT_SHIFT,
+		// operator >>=, nb_inplace_rshift
+		INPLACE_RIGHT_SHIFT,
+
+		// operator [integral], nb_int
+		INT,
+		// operator [floating_point], nb_float
+		FLOAT,
+
+		// operator [], mp_subscript & mp_ass_subscript
+		SUBSCRIPT,
+
+		// operator ==, py_EQ
+		EQUAL,
+		// operator !=, py_NE
+		NOT_EQUAL,
+		// operator <, py_LT
+		LESS,
+		// operator <=, py_LE
+		LESS_OR_EQUAL,
+		// operator >, py_GT
+		GREATER,
+		// operator >=, py_GE
+		GREATER_OR_EQUAL
+	};
+	
 inline namespace python_embedder_detail
 {
 	template<typename T, typename = void>
@@ -191,6 +281,15 @@ inline namespace python_embedder_detail
 	constexpr bool is_supported_return_type_v = is_supported_return_type<T>::value;
 
 
+
+	template<typename FunctionPtrType_, FunctionPtrType_ FunctionPtr_>
+	struct FunctionPtrTypePair
+	{
+		using FunctionPtrType = FunctionPtrType_;
+		static constexpr FunctionPtrType functionPtr = FunctionPtr_;
+	};
+
+
 	
 	template<template<typename, typename = void> typename Checker, typename ParameterTypes, size_t... Indices>
 	auto validity_checker_helper(ParameterTypes, std::index_sequence<Indices...>)
@@ -216,7 +315,7 @@ inline namespace python_embedder_detail
 
 
 	template<typename... Args>
-	using FieldTuple = std::tuple<Args...>;
+	using TypeList = std::tuple<Args...>;
 
 
 
@@ -256,6 +355,7 @@ inline namespace python_embedder_detail
 		inline static PyTypeObject typeInfo;
 		inline static std::vector<PyMemberDef> fields;
 		inline static std::vector<PyMethodDef> methods;
+		inline static PyNumberMethods numberMethods;
 
 		
 		static PyObject* CustomNew(PyTypeObject* type, PyObject* args, PyObject* keywords);
@@ -288,7 +388,7 @@ inline namespace python_embedder_detail
 	
 
 	template<typename FunctionPtrType, FunctionPtrType FunctionPtr, typename ReturnType, size_t ParameterCount, typename ParameterTypeTuple>
-	class Dispatcher
+	class FunctionDispatcher
 	{
 	public:
 		static PyObject* ReplicatedFunction(PyObject* self, PyObject* args);
@@ -297,7 +397,7 @@ inline namespace python_embedder_detail
 	
 	template<typename FunctionPtrType, FunctionPtrType FunctionPtr, typename ReturnType, size_t ParameterCount, typename ParameterTypeTuple,
 		typename InstanceReturnFunctionType, InstanceReturnFunctionType InstanceReturnFunction, typename InstanceReturnFunctionReturnType, size_t InstanceReturnFunctionParameterCount, typename InstanceReturnFunctionParameterTuple>
-	class MemberAsStaticDispatcher
+	class MemberFunctionAsStaticFunctionDispatcher
 	{
 	public:
 		static PyObject* ReplicatedFunction(PyObject* self, PyObject* args);
@@ -305,10 +405,28 @@ inline namespace python_embedder_detail
 
 
 	template<typename FunctionPtrType, FunctionPtrType FunctionPtr, typename ReturnType, size_t ParameterCount, typename ParameterTypeTuple, typename Class>
-	class MemberDispatcher
+	class MemberFunctionDispatcher
 	{
 	public:
 		static PyObject* ReplicatedFunction(PyObject* self, PyObject* args);
+	};
+
+
+	template<typename FunctionPtrType, FunctionPtrType FunctionPtr, typename ReturnType, size_t ParameterCount, typename ParameterTypeTuple, typename Class, EOperatorType Operator>
+	class OperatorDispatcher
+	{
+	public:
+		static PyObject* BinaryReplicatedFunction(PyObject* self, PyObject* args);
+		static PyObject* UnaryReplicatedFunction(PyObject* self);
+	};
+
+
+	template<typename ReturnType>
+	class TemplateFunctionDispatcher
+	{
+		static PyObject* ReplicatedFunction(PyObject* self, PyObject* args);
+
+		inline static std::unordered_map<unsigned long long, PyObject* (*)(PyObject*, PyObject*)> instantiatedFunctions;
 	};
 }
 
@@ -328,6 +446,14 @@ public:
 
 	template<typename FunctionPtrType, FunctionPtrType FunctionPtr, typename Class>
 	static void RegisterMemberFunction(const char* functionName);
+
+
+	template<typename FunctionPtrType, FunctionPtrType FunctionPtr, typename Class>
+	static void RegisterOperator(EOperatorType operatorType);
+
+
+	template<typename... FunctionPtrTypePairs>
+	static void RegisterTemplateFunction(const char* functionName);
 
 
 	template<typename T, typename Offsets, typename... FieldTypes>
@@ -385,8 +511,13 @@ private:
 
 
 
+
+
+
+
+	
 template <typename T>
-PyObject* python_embedder_detail::PyExportedClass<T>::CustomNew(PyTypeObject* type, [[maybe_unused]] PyObject* args, [[maybe_unused]] PyObject* keywords)
+PyObject* PyExportedClass<T>::CustomNew(PyTypeObject* type, [[maybe_unused]] PyObject* args, [[maybe_unused]] PyObject* keywords)
 {
 	PyExportedClass* const self = reinterpret_cast<PyExportedClass*>(type->tp_alloc(type, 0));
 
@@ -398,11 +529,11 @@ PyObject* python_embedder_detail::PyExportedClass<T>::CustomNew(PyTypeObject* ty
 
 template <typename T>
 template <typename Offsets, typename ... FieldTypes>
-int python_embedder_detail::PyExportedClass<T>::CustomInit(PyObject* self_, PyObject* args, [[maybe_unused]] PyObject* keywords)
+int PyExportedClass<T>::CustomInit(PyObject* self_, PyObject* args, [[maybe_unused]] PyObject* keywords)
 {
 	PyExportedClass* const self = reinterpret_cast<PyExportedClass*>(self_);
 
-	using FieldTypeTuple = FieldTuple<FieldTypes...>;
+	using FieldTypeTuple = TypeList<FieldTypes...>;
 	constexpr size_t fieldCount = std::tuple_size_v<FieldTypeTuple>;
 
 	bool parseResult = true;
@@ -435,7 +566,7 @@ int python_embedder_detail::PyExportedClass<T>::CustomInit(PyObject* self_, PyOb
 
 
 template <typename T>
-void python_embedder_detail::PyExportedClass<T>::CustomDealloc(PyObject* self)
+void PyExportedClass<T>::CustomDealloc(PyObject* self)
 {
 	Py_TYPE(self)->tp_free(self);
 }
@@ -443,7 +574,7 @@ void python_embedder_detail::PyExportedClass<T>::CustomDealloc(PyObject* self)
 
 
 template <typename T>
-int python_embedder_detail::Converter<T>::ParseValue(PyObject* pyObject, T* pT)
+int Converter<T>::ParseValue(PyObject* pyObject, T* pT)
 {
 	new (pT) T{ reinterpret_cast<PyExportedClass<T>*>(pyObject)->t };
 
@@ -452,7 +583,7 @@ int python_embedder_detail::Converter<T>::ParseValue(PyObject* pyObject, T* pT)
 
 
 template <typename T>
-PyObject* python_embedder_detail::Converter<T>::BuildValue(T* pT)
+PyObject* Converter<T>::BuildValue(T* pT)
 {
 	PyExportedClass<T>* const toReturn = PyObject_New(PyExportedClass<T>, &PyExportedClass<T>::typeInfo);
 	PyObject* const object = reinterpret_cast<PyObject*>(toReturn);
@@ -467,7 +598,7 @@ PyObject* python_embedder_detail::Converter<T>::BuildValue(T* pT)
 
 
 template <typename FunctionPtrType, FunctionPtrType FunctionPtr, typename ReturnType, size_t ParameterCount, typename ParameterTypeTuple>
-PyObject* python_embedder_detail::Dispatcher<FunctionPtrType, FunctionPtr, ReturnType, ParameterCount, ParameterTypeTuple>::ReplicatedFunction([[maybe_unused]] PyObject* self, PyObject* args)
+PyObject* FunctionDispatcher<FunctionPtrType, FunctionPtr, ReturnType, ParameterCount, ParameterTypeTuple>::ReplicatedFunction([[maybe_unused]] PyObject* self, PyObject* args)
 {
 	ParameterTypeTuple arguments;
 	
@@ -551,7 +682,7 @@ PyObject* python_embedder_detail::Dispatcher<FunctionPtrType, FunctionPtr, Retur
 
 
 template <typename FunctionPtrType, FunctionPtrType FunctionPtr, typename ReturnType, size_t ParameterCount, typename ParameterTypeTuple, typename InstanceReturnFunctionType, InstanceReturnFunctionType InstanceReturnFunction, typename InstanceReturnFunctionReturnType, size_t InstanceReturnFunctionParameterCount, typename InstanceReturnFunctionParameterTypeTuple>
-PyObject* python_embedder_detail::MemberAsStaticDispatcher<FunctionPtrType, FunctionPtr, ReturnType, ParameterCount, ParameterTypeTuple, InstanceReturnFunctionType, InstanceReturnFunction, InstanceReturnFunctionReturnType, InstanceReturnFunctionParameterCount, InstanceReturnFunctionParameterTypeTuple>
+PyObject* MemberFunctionAsStaticFunctionDispatcher<FunctionPtrType, FunctionPtr, ReturnType, ParameterCount, ParameterTypeTuple, InstanceReturnFunctionType, InstanceReturnFunction, InstanceReturnFunctionReturnType, InstanceReturnFunctionParameterCount, InstanceReturnFunctionParameterTypeTuple>
 	::ReplicatedFunction([[maybe_unused]] PyObject* self, PyObject* args)
 {
 	InstanceReturnFunctionParameterTypeTuple instanceReturnerArguments;
@@ -653,6 +784,8 @@ PyObject* python_embedder_detail::MemberAsStaticDispatcher<FunctionPtrType, Func
 		}
 	);
 
+	Py_DECREF(realArgs);
+
 	if (!parseResult)
 	{
 		return nullptr;
@@ -696,7 +829,7 @@ PyObject* python_embedder_detail::MemberAsStaticDispatcher<FunctionPtrType, Func
 
 
 template <typename FunctionPtrType, FunctionPtrType FunctionPtr, typename ReturnType, size_t ParameterCount, typename ParameterTypeTuple, typename Class>
-PyObject* python_embedder_detail::MemberDispatcher<FunctionPtrType, FunctionPtr, ReturnType, ParameterCount, ParameterTypeTuple, Class>::ReplicatedFunction(PyObject* self, PyObject* args)
+PyObject* MemberFunctionDispatcher<FunctionPtrType, FunctionPtr, ReturnType, ParameterCount, ParameterTypeTuple, Class>::ReplicatedFunction(PyObject* self, PyObject* args)
 {
 	ParameterTypeTuple arguments;
 
@@ -779,6 +912,78 @@ PyObject* python_embedder_detail::MemberDispatcher<FunctionPtrType, FunctionPtr,
 		}
 	}
 
+	Py_INCREF(toReturn);
+	return toReturn;
+}
+
+
+template <typename FunctionPtrType, FunctionPtrType FunctionPtr, typename ReturnType, size_t ParameterCount, typename ParameterTypeTuple, typename Class, EOperatorType Operator>
+PyObject* OperatorDispatcher<FunctionPtrType, FunctionPtr, ReturnType, ParameterCount, ParameterTypeTuple, Class, Operator>::BinaryReplicatedFunction(PyObject* self, PyObject* args)
+{
+	// TODO
+
+	if constexpr (std::is_same_v<ReturnType, Class&>)
+	{
+		return self;
+	}
+}
+
+
+template <typename FunctionPtrType, FunctionPtrType FunctionPtr, typename ReturnType, size_t ParameterCount, typename ParameterTypeTuple, typename Class, EOperatorType Operator>
+PyObject* OperatorDispatcher<FunctionPtrType, FunctionPtr, ReturnType, ParameterCount, ParameterTypeTuple, Class, Operator>::UnaryReplicatedFunction(PyObject* self)
+{
+	// TODO
+	
+	if constexpr (std::is_same_v<ReturnType, Class&>)
+	{
+		return self;
+	}
+}
+
+
+	
+template<typename ReturnType>
+PyObject* TemplateFunctionDispatcher<ReturnType>::ReplicatedFunction(PyObject* self, PyObject* args)
+{
+	PyObject* const types = PyTuple_GetItem(args, 0);
+
+	std::string instance;
+	
+	// TODO: parse the types string
+
+	PyObject* const realArgs = PyTuple_GetSlice(args, 1, PySequence_Length(args));
+
+
+	const auto funcToCall = instantiatedFunctions.at(xxhash::xxh64(instance.c_str(), instance.size() + 1, XXHASH_CX_XXH64_SEED));
+	
+	PyObject* toReturn;
+	if constexpr (std::is_same_v<ReturnType, void>)
+	{
+		funcToCall(self, args);
+
+		toReturn = Py_None;
+	}
+	else
+	{
+		ReturnType returnValue = funcToCall(self, args);
+
+		if constexpr (std::is_fundamental_v<ReturnType> || std::is_same_v<ReturnType, const char*>)
+		{
+			const char* format = get_argument_type_format_string<ReturnType>();
+
+			toReturn = Py_BuildValue(format, returnValue);
+		}
+		else if constexpr (std::is_same_v<ReturnType, std::string>)
+		{
+			toReturn = Py_BuildValue("s", returnValue.c_str());
+		}
+		else
+		{
+			toReturn = Py_BuildValue("O&", &Converter<ReturnType>::BuildValue, returnValue);
+		}
+	}
+	Py_DECREF(realArgs);
+	
 	Py_INCREF(toReturn);
 	return toReturn;
 }
@@ -940,7 +1145,7 @@ void Exporter<ModuleNameHashValue>::RegisterFunction(const char* functionName)
 	static_assert(ValidityChecker<is_supported_parameter_type, ParameterTypeTuple, parameterCount>::value);
 	static_assert(is_supported_return_type_v<ReturnType>);
 	
-	using InstantiatedDispatcher = Dispatcher<FunctionPtrType, FunctionPtr, ReturnType, parameterCount, ParameterTypeTuple>;
+	using InstantiatedDispatcher = FunctionDispatcher<FunctionPtrType, FunctionPtr, ReturnType, parameterCount, ParameterTypeTuple>;
 
 	methods.push_back(PyMethodDef{ functionName, &InstantiatedDispatcher::ReplicatedFunction, METH_VARARGS, nullptr });
 }
@@ -969,7 +1174,7 @@ void Exporter<ModuleNameHashValue>::RegisterMemberFunctionAsStaticFunction(const
 	static_assert(ValidityChecker<is_supported_parameter_type, InstanceReturnerParameterTypeTuple, instanceReturnerParameterCount>::value);
 	static_assert(std::is_same_v<InstanceReturnerReturnType, remove_const_ref_t<typename boost::mpl::at_c<ParameterTypes, 0>::type>*>);
 	
-	using InstantiatedDispatcher = MemberAsStaticDispatcher<FunctionPtrType, FunctionPtr, ReturnType, parameterCount, ParameterTypeTuple,
+	using InstantiatedDispatcher = MemberFunctionAsStaticFunctionDispatcher<FunctionPtrType, FunctionPtr, ReturnType, parameterCount, ParameterTypeTuple,
 		InstanceReturnFunctionType, InstanceReturnFunction, InstanceReturnerReturnType, instanceReturnerParameterCount, InstanceReturnerParameterTypeTuple>;
 
 	methods.push_back(PyMethodDef{ functionName, &InstantiatedDispatcher::ReplicatedFunction, METH_VARARGS, nullptr });
@@ -992,7 +1197,7 @@ void Exporter<ModuleNameHashValue>::RegisterMemberFunction(const char* functionN
 	static_assert(ValidityChecker<is_supported_parameter_type, ParameterTypeTuple, parameterCount - 1>::value);
 	static_assert(is_supported_return_type_v<ReturnType>);
 
-	using InstantiatedDispatcher = MemberDispatcher<FunctionPtrType, FunctionPtr, ReturnType, parameterCount, ParameterTypeTuple, Class>;
+	using InstantiatedDispatcher = MemberFunctionDispatcher<FunctionPtrType, FunctionPtr, ReturnType, parameterCount, ParameterTypeTuple, Class>;
 
 	if (!PyExportedClass<Class>::methods.empty() && PyExportedClass<Class>::methods.back().ml_name == nullptr)
 	{
@@ -1007,6 +1212,181 @@ void Exporter<ModuleNameHashValue>::RegisterMemberFunction(const char* functionN
 		}
 	);
 }
+
+
+	
+template <unsigned long long ModuleNameHashValue>
+template <typename FunctionPtrType, FunctionPtrType FunctionPtr, typename Class>
+void Exporter<ModuleNameHashValue>::RegisterOperator(const EOperatorType operatorType)
+{
+	using namespace boost::function_types;
+
+	static_assert(is_supported_custom_type_v<Class>);
+
+	constexpr size_t parameterCount = function_arity<FunctionPtrType>::value;
+	using ReturnType = typename result_type<FunctionPtrType>::type;
+	using ParameterTypes = parameter_types<FunctionPtrType>;
+	using ParameterTypeTuple = TailsParameterTuple<ParameterTypes, parameterCount>;
+	static_assert(ValidityChecker<is_supported_parameter_type, ParameterTypeTuple, parameterCount>::value);
+	static_assert(is_supported_return_type_v<ReturnType> || std::is_same_v<ReturnType&>);
+
+	
+	switch (operatorType) 
+	{
+		case EOperatorType::ADD:
+			PyExportedClass<Class>::numberMethods.nb_add = &OperatorDispatcher<FunctionPtrType, FunctionPtr, ReturnType, parameterCount, ParameterTypeTuple, Class, EOperatorType::ADD>::BinaryReplicatedFunction;
+			break;
+
+		case EOperatorType::SUBTRACT:
+			PyExportedClass<Class>::numberMethods.nb_subtract = &OperatorDispatcher<FunctionPtrType, FunctionPtr, ReturnType, parameterCount, ParameterTypeTuple, Class, EOperatorType::SUBTRACT>::BinaryReplicatedFunction;
+			break;
+
+		case EOperatorType::MULTIPLY:
+			PyExportedClass<Class>::numberMethods.nb_multiply = &OperatorDispatcher<FunctionPtrType, FunctionPtr, ReturnType, parameterCount, ParameterTypeTuple, Class, EOperatorType::MULTIPLY>::BinaryReplicatedFunction;
+			break;
+
+		case EOperatorType::DIVIDE:
+			PyExportedClass<Class>::numberMethods.nb_true_divide = &OperatorDispatcher<FunctionPtrType, FunctionPtr, ReturnType, parameterCount, ParameterTypeTuple, Class, EOperatorType::DIVIDE>::BinaryReplicatedFunction;
+			break;
+
+		case EOperatorType::REMAINDER:
+			PyExportedClass<Class>::numberMethods.nb_remainder = &OperatorDispatcher<FunctionPtrType, FunctionPtr, ReturnType, parameterCount, ParameterTypeTuple, Class, EOperatorType::REMAINDER>::BinaryReplicatedFunction;
+			break;
+
+		case EOperatorType::POSITIVE:
+			PyExportedClass<Class>::numberMethods.nb_positive = &OperatorDispatcher<FunctionPtrType, FunctionPtr, ReturnType, parameterCount, ParameterTypeTuple, Class, EOperatorType::POSITIVE>::UnaryReplicatedFunction;
+			break;
+
+		case EOperatorType::NEGATIVE:
+			PyExportedClass<Class>::numberMethods.nb_negative = &OperatorDispatcher<FunctionPtrType, FunctionPtr, ReturnType, parameterCount, ParameterTypeTuple, Class, EOperatorType::NEGATIVE>::UnaryReplicatedFunction;
+			break;
+
+		case EOperatorType::XOR:
+			PyExportedClass<Class>::numberMethods.nb_xor = &OperatorDispatcher<FunctionPtrType, FunctionPtr, ReturnType, parameterCount, ParameterTypeTuple, Class, EOperatorType::XOR>::BinaryReplicatedFunction;
+			break;
+
+		case EOperatorType::AND:
+			PyExportedClass<Class>::numberMethods.nb_and = &OperatorDispatcher<FunctionPtrType, FunctionPtr, ReturnType, parameterCount, ParameterTypeTuple, Class, EOperatorType::AND>::BinaryReplicatedFunction;
+			break;
+
+		case EOperatorType::OR:
+			PyExportedClass<Class>::numberMethods.nb_or = &OperatorDispatcher<FunctionPtrType, FunctionPtr, ReturnType, parameterCount, ParameterTypeTuple, Class, EOperatorType::OR>::BinaryReplicatedFunction;
+			break;
+
+		case EOperatorType::INVERT:
+			PyExportedClass<Class>::numberMethods.nb_invert = &OperatorDispatcher<FunctionPtrType, FunctionPtr, ReturnType, parameterCount, ParameterTypeTuple, Class, EOperatorType::INVERT>::UnaryReplicatedFunction;
+			break;
+
+		case EOperatorType::LEFT_SHIFT:
+			PyExportedClass<Class>::numberMethods.nb_lshift = &OperatorDispatcher<FunctionPtrType, FunctionPtr, ReturnType, parameterCount, ParameterTypeTuple, Class, EOperatorType::LEFT_SHIFT>::BinaryReplicatedFunction;
+			break;
+
+		case EOperatorType::RIGHT_SHIFT:
+			PyExportedClass<Class>::numberMethods.nb_rshift = &OperatorDispatcher<FunctionPtrType, FunctionPtr, ReturnType, parameterCount, ParameterTypeTuple, Class, EOperatorType::RIGHT_SHIFT>::BinaryReplicatedFunction;
+			break;
+
+		case EOperatorType::INPLACE_ADD:
+			PyExportedClass<Class>::numberMethods.nb_inplace_add = &OperatorDispatcher<FunctionPtrType, FunctionPtr, ReturnType, parameterCount, ParameterTypeTuple, Class, EOperatorType::INPLACE_ADD>::BinaryReplicatedFunction;
+			break;
+
+		case EOperatorType::INPLACE_SUBTRACT:
+			PyExportedClass<Class>::numberMethods.nb_inplace_subtract = &OperatorDispatcher<FunctionPtrType, FunctionPtr, ReturnType, parameterCount, ParameterTypeTuple, Class, EOperatorType::INPLACE_SUBTRACT>::BinaryReplicatedFunction;
+			break;
+
+		case EOperatorType::INPLACE_MULTIPLY:
+			PyExportedClass<Class>::numberMethods.nb_inplace_multiply = &OperatorDispatcher<FunctionPtrType, FunctionPtr, ReturnType, parameterCount, ParameterTypeTuple, Class, EOperatorType::INPLACE_MULTIPLY>::BinaryReplicatedFunction;
+			break;
+
+		case EOperatorType::INPLACE_DIVIDE:
+			PyExportedClass<Class>::numberMethods.nb_inplace_true_divide = &OperatorDispatcher<FunctionPtrType, FunctionPtr, ReturnType, parameterCount, ParameterTypeTuple, Class, EOperatorType::INPLACE_DIVIDE>::BinaryReplicatedFunction;
+			break;
+
+		case EOperatorType::INPLACE_REMAINDER:
+			PyExportedClass<Class>::numberMethods.nb_inplace_remainder = &OperatorDispatcher<FunctionPtrType, FunctionPtr, ReturnType, parameterCount, ParameterTypeTuple, Class, EOperatorType::INPLACE_REMAINDER>::BinaryReplicatedFunction;
+			break;
+
+		case EOperatorType::INPLACE_XOR:
+			PyExportedClass<Class>::numberMethods.nb_inplace_xor = &OperatorDispatcher<FunctionPtrType, FunctionPtr, ReturnType, parameterCount, ParameterTypeTuple, Class, EOperatorType::INPLACE_XOR>::BinaryReplicatedFunction;
+			break;
+
+		case EOperatorType::INPLACE_AND:
+			PyExportedClass<Class>::numberMethods.nb_inplace_and = &OperatorDispatcher<FunctionPtrType, FunctionPtr, ReturnType, parameterCount, ParameterTypeTuple, Class, EOperatorType::INPLACE_AND>::BinaryReplicatedFunction;
+			break;
+
+		case EOperatorType::INPLACE_OR:
+			PyExportedClass<Class>::numberMethods.nb_inplace_or = &OperatorDispatcher<FunctionPtrType, FunctionPtr, ReturnType, parameterCount, ParameterTypeTuple, Class, EOperatorType::INPLACE_OR>::BinaryReplicatedFunction;
+			break;
+
+		case EOperatorType::INPLACE_LEFT_SHIFT:
+			PyExportedClass<Class>::numberMethods.nb_inplace_lshift = &OperatorDispatcher<FunctionPtrType, FunctionPtr, ReturnType, parameterCount, ParameterTypeTuple, Class, EOperatorType::INPLACE_LEFT_SHIFT>::BinaryReplicatedFunction;
+			break;
+
+		case EOperatorType::INPLACE_RIGHT_SHIFT:
+			PyExportedClass<Class>::numberMethods.nb_inplace_rshift = &OperatorDispatcher<FunctionPtrType, FunctionPtr, ReturnType, parameterCount, ParameterTypeTuple, Class, EOperatorType::INPLACE_RIGHT_SHIFT>::BinaryReplicatedFunction;
+			break;
+
+		case EOperatorType::INT:
+			PyExportedClass<Class>::numberMethods.nb_int = &OperatorDispatcher<FunctionPtrType, FunctionPtr, ReturnType, parameterCount, ParameterTypeTuple, Class, EOperatorType::INT>::UnaryReplicatedFunction;
+			break;
+
+		case EOperatorType::FLOAT:
+			PyExportedClass<Class>::numberMethods.nb_float = &OperatorDispatcher<FunctionPtrType, FunctionPtr, ReturnType, parameterCount, ParameterTypeTuple, Class, EOperatorType::FLOAT>::UnaryReplicatedFunction;
+			break;
+
+		case EOperatorType::SUBSCRIPT:
+			break;
+
+		case EOperatorType::EQUAL:
+			break;
+
+		case EOperatorType::NOT_EQUAL:
+			break;
+
+		case EOperatorType::LESS:
+			break;
+
+		case EOperatorType::LESS_OR_EQUAL:
+			break;
+
+		case EOperatorType::GREATER:
+			break;
+
+		case EOperatorType::GREATER_OR_EQUAL:
+			break;
+
+		default:
+			break;
+	}
+}
+
+
+	
+template <unsigned long long ModuleNameHashValue>
+template <typename... FunctionPtrTypePairs>
+void Exporter<ModuleNameHashValue>::RegisterTemplateFunction(const char* functionName)
+{
+	using namespace boost::function_types;
+	
+	using Pairs = TypeList<FunctionPtrTypePairs...>;
+	constexpr size_t pairCount = std::tuple_size_v<Pairs>;
+
+	using ReturnType = typename result_type<typename std::tuple_element_t<0, Pairs>::FunctionPtrType>::type;
+	
+	using InstantiatedDispatcher = TemplateFunctionDispatcher<ReturnType>;
+	auto& functionMap = InstantiatedDispatcher::instantiatedFunctions;
+
+	boost::mp11::mp_for_each<boost::mp11::mp_iota_c<pairCount>>([&](auto i)
+		{
+			// iterate over the template parameters, get the str of the typename, concat, hash and register to the map
+		}
+	);
+
+	// TODO: How to distinguish different functions with same template parameter list?
+	// maybe concat the function name at the front
+	
+	methods.push_back(PyMethodDef{ functionName, &InstantiatedDispatcher::ReplicatedFunction, METH_VARARGS, nullptr });
+}
+
 
 
 template <unsigned long long ModuleNameHashValue>
@@ -1031,6 +1411,7 @@ void Exporter<ModuleNameHashValue>::RegisterType(const char* typeName, std::init
 	typeObject.tp_dealloc = &PyExportedType::CustomDealloc;
 	typeObject.tp_members = PyExportedType::fields.data();
 	typeObject.tp_methods = PyExportedType::methods.data();
+	typeObject.tp_as_number = &PyExportedType::numberMethods;
 
 	PyExportedType::typeInfo = typeObject;
 	types.push_back(&PyExportedType::typeInfo);
