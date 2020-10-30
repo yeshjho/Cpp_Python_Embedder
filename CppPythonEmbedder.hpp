@@ -101,6 +101,8 @@ using xxhash::literals::operator ""_xxh64;
 #define PY_EXPORT_TEMPLATE_MEMBER_FUNCTION_NAME(T, func, funcName, moduleName, templateParamSeq) cpp_python_embedder::Exporter<#moduleName##_xxh64>::RegisterTemplateMemberFunction<#T###funcName##_xxh64, T, _PY_EXPORTER_TEMPLATE_INSTANCES(T##::##func, templateParamSeq)>(#funcName)
 
 #define PY_EXPORT_TYPE_NAME(T, typeName, moduleName, fieldSeq) cpp_python_embedder::Exporter<#moduleName##_xxh64>::RegisterType<T, std::integer_sequence<size_t, _PY_EXPORTER_FIELD_OFFSETS(T, fieldSeq)>, _PY_EXPORTER_FIELD_TYPES(T, fieldSeq)>(#typeName, { _PY_EXPORTER_FIELDS(T, fieldSeq) })
+#define PY_EXPORT_TYPE_1FIELD_NAME(T, typeName, moduleName, field) cpp_python_embedder::Exporter<#moduleName##_xxh64>::RegisterType<T, std::integer_sequence<size_t, offsetof(T, field)>, decltype(T##::##field)>(#typeName, {{ #field, cpp_python_embedder::get_member_type_number<decltype(T::##field)>(), offsetof(cpp_python_embedder::PyExportedClass<T>, t) + offsetof(T, field), 0, nullptr }, { nullptr, 0, 0, 0, nullptr }})
+#define PY_EXPORT_TYPE_0FIELD_NAME(T, typeName, moduleName) cpp_python_embedder::Exporter<#moduleName##_xxh64>::RegisterType<T, std::integer_sequence<size_t>>(#typeName, {{ nullptr, 0, 0, 0, nullptr }})
 
 #define PY_EXPORT_MODULE_NAME(moduleName, newName) cpp_python_embedder::Exporter<#moduleName##_xxh64>::Export(#newName)
 
@@ -121,6 +123,8 @@ using xxhash::literals::operator ""_xxh64;
 #define PY_EXPORT_TEMPLATE_MEMBER_FUNCTION(T, func, moduleName, templateParamSeq) PY_EXPORT_TEMPLATE_MEMBER_FUNCTION_NAME(T, func, func, moduleName, templateParamSeq)
 
 #define PY_EXPORT_TYPE(T, moduleName, fieldSeq) PY_EXPORT_TYPE_NAME(T, T, moduleName, fieldSeq)
+#define PY_EXPORT_TYPE_1FIELD(T, moduleName, field) PY_EXPORT_TYPE_1FIELD_NAME(T, T, moduleName, field)
+#define PY_EXPORT_TYPE_0FIELD(T, moduleName) PY_EXPORT_TYPE_0FIELD_NAME(T, T, moduleName)
 
 #define PY_EXPORT_MODULE(moduleName) PY_EXPORT_MODULE_NAME(moduleName, moduleName)
 
@@ -128,7 +132,6 @@ using xxhash::literals::operator ""_xxh64;
 
 namespace cpp_python_embedder
 {
-// TODO: Field count == 0 or 1
 // TODO: Way to choose between overloads (take explicit function ptr?)
 // TODO: Support user-defined data types as field
 // TODO: Support array as field (python list)
@@ -622,7 +625,8 @@ PyObject* Converter<T>::BuildValue(T* pT)
 
 
 template <typename FunctionPtrType, FunctionPtrType FunctionPtr, typename ReturnType, size_t ParameterCount, typename ParameterTypeTuple>
-PyObject* FunctionDispatcher<FunctionPtrType, FunctionPtr, ReturnType, ParameterCount, ParameterTypeTuple>::ReplicatedFunction([[maybe_unused]] PyObject* self, PyObject* args)
+PyObject* FunctionDispatcher<FunctionPtrType, FunctionPtr, ReturnType, ParameterCount, ParameterTypeTuple>
+	::ReplicatedFunction([[maybe_unused]] PyObject* self, PyObject* args)
 {
 	ParameterTypeTuple arguments;
 	
@@ -707,7 +711,7 @@ PyObject* FunctionDispatcher<FunctionPtrType, FunctionPtr, ReturnType, Parameter
 
 template <typename FunctionPtrType, FunctionPtrType FunctionPtr, typename ReturnType, size_t ParameterCount, typename ParameterTypeTuple, typename InstanceReturnFunctionType, InstanceReturnFunctionType InstanceReturnFunction, typename InstanceReturnFunctionReturnType, size_t InstanceReturnFunctionParameterCount, typename InstanceReturnFunctionParameterTypeTuple>
 PyObject* MemberFunctionAsStaticFunctionDispatcher<FunctionPtrType, FunctionPtr, ReturnType, ParameterCount, ParameterTypeTuple, InstanceReturnFunctionType, InstanceReturnFunction, InstanceReturnFunctionReturnType, InstanceReturnFunctionParameterCount, InstanceReturnFunctionParameterTypeTuple>
-	::ReplicatedFunction(PyObject* self, PyObject* args)
+	::ReplicatedFunction([[maybe_unused]] PyObject* self, PyObject* args)
 {
 	InstanceReturnFunctionParameterTypeTuple instanceReturnerArguments;
 
@@ -859,7 +863,8 @@ PyObject* MemberFunctionAsStaticFunctionDispatcher<FunctionPtrType, FunctionPtr,
 
 	
 template <typename FunctionPtrType, FunctionPtrType FunctionPtr, typename ReturnType, size_t ParameterCount, typename ParameterTypeTuple, typename InstanceReturnFunctionType, InstanceReturnFunctionType InstanceReturnFunction, typename InstanceReturnFunctionReturnType, size_t InstanceReturnFunctionParameterCount, typename InstanceReturnFunctionParameterTypeTuple, typename LambdaPtrType, LambdaPtrType LambdaPtr>
-PyObject* MemberFunctionAsStaticFunctionLambdaDispatcher<FunctionPtrType, FunctionPtr, ReturnType, ParameterCount, ParameterTypeTuple, InstanceReturnFunctionType, InstanceReturnFunction, InstanceReturnFunctionReturnType, InstanceReturnFunctionParameterCount, InstanceReturnFunctionParameterTypeTuple, LambdaPtrType, LambdaPtr>::ReplicatedFunction([[maybe_unused]] PyObject* self, PyObject* args)
+PyObject* MemberFunctionAsStaticFunctionLambdaDispatcher<FunctionPtrType, FunctionPtr, ReturnType, ParameterCount, ParameterTypeTuple, InstanceReturnFunctionType, InstanceReturnFunction, InstanceReturnFunctionReturnType, InstanceReturnFunctionParameterCount, InstanceReturnFunctionParameterTypeTuple, LambdaPtrType, LambdaPtr>
+	::ReplicatedFunction([[maybe_unused]] PyObject* self, PyObject* args)
 {
 	InstanceReturnFunctionParameterTypeTuple instanceReturnerArguments;
 
@@ -1013,7 +1018,8 @@ PyObject* MemberFunctionAsStaticFunctionLambdaDispatcher<FunctionPtrType, Functi
 
 
 template <typename FunctionPtrType, FunctionPtrType FunctionPtr, typename ReturnType, size_t ParameterCount, typename ParameterTypeTuple, typename Class>
-PyObject* MemberFunctionDispatcher<FunctionPtrType, FunctionPtr, ReturnType, ParameterCount, ParameterTypeTuple, Class>::ReplicatedFunction(PyObject* self, PyObject* args)
+PyObject* MemberFunctionDispatcher<FunctionPtrType, FunctionPtr, ReturnType, ParameterCount, ParameterTypeTuple, Class>
+	::ReplicatedFunction(PyObject* self, PyObject* args)
 {
 	ParameterTypeTuple arguments;
 
@@ -1110,7 +1116,8 @@ PyObject* MemberFunctionDispatcher<FunctionPtrType, FunctionPtr, ReturnType, Par
 
 
 template <typename FunctionPtrType, FunctionPtrType FunctionPtr, typename ReturnType, size_t ParameterCount, typename ParameterTypeTuple, typename Class, EOperatorType Operator>
-PyObject* MemberOperatorDispatcher<FunctionPtrType, FunctionPtr, ReturnType, ParameterCount, ParameterTypeTuple, Class, Operator>::BinaryReplicatedFunction(PyObject* self, PyObject* arg)
+PyObject* MemberOperatorDispatcher<FunctionPtrType, FunctionPtr, ReturnType, ParameterCount, ParameterTypeTuple, Class, Operator>
+	::BinaryReplicatedFunction(PyObject* self, PyObject* arg)
 {
 	ParameterTypeTuple arguments;
 
@@ -1207,7 +1214,8 @@ PyObject* MemberOperatorDispatcher<FunctionPtrType, FunctionPtr, ReturnType, Par
 
 
 template <typename FunctionPtrType, FunctionPtrType FunctionPtr, typename ReturnType, size_t ParameterCount, typename ParameterTypeTuple, typename Class, EOperatorType Operator>
-PyObject* MemberOperatorDispatcher<FunctionPtrType, FunctionPtr, ReturnType, ParameterCount, ParameterTypeTuple, Class, Operator>::UnaryReplicatedFunction(PyObject* self)
+PyObject* MemberOperatorDispatcher<FunctionPtrType, FunctionPtr, ReturnType, ParameterCount, ParameterTypeTuple, Class, Operator>
+	::UnaryReplicatedFunction(PyObject* self)
 {
 	Class instance;
 	Converter<Class>::ParseValue(self, &instance);

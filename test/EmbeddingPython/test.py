@@ -31,3 +31,8 @@ h( g(("glm::vec3"), ()) )
 
 t = T(1, 2)
 t.h(("float"))
+
+z = Zero()
+one = One(5959)
+z.Z()
+one.O()

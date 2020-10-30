@@ -133,6 +133,26 @@ public:
 	int j;
 };
 
+class Zero
+{
+public:
+	void Z() const
+	{
+		std::cout << "zero" << std::endl;
+	}
+};
+
+class One
+{
+public:
+	int o = 77777;
+
+	void O() const
+	{
+		std::cout << o << std::endl;
+	}
+};
+
 T* t_returner()
 {
 	static T t;
@@ -170,18 +190,22 @@ int main()
 	PY_EXPORT_MEMBER_OPERATOR(Vec, operator+=, cpp_python_embedder::EOperatorType::INPLACE_ADD, test);
 	PY_EXPORT_MEMBER_OPERATOR(Vec, operator-, cpp_python_embedder::EOperatorType::NEGATIVE, test);
 	PY_EXPORT_TYPE(Vec, test, (x)(y)(z));
-	
+
 	PY_EXPORT_TYPE_NAME(glm::vec3, vec3, test, (x)(y)(z));
 
 	PY_EXPORT_GLOBAL_FUNCTION_NAME((glm::dot<3, float, glm::defaultp>), dot, test);
 	
 	PY_EXPORT_TEMPLATE_STATIC_FUNCTION_NAME(T, f, qwer, test, ((int, float, double))((std::string, long, char))((unsigned char, long long, short)));
-	// PY_EXPORT_TEMPLATE_MEMBER_FUNCTION_AS_STATIC_FUNCTION(T, g, t_returner, test, ((glm::vec3))((long double)));
-	PY_EXPORT_TEMPLATE_MEMBER_FUNCTION_AS_STATIC_FUNCTION_LAMBDA(T, g, []() { static T t; return &t; }, test, ((glm::vec3))((long double)));
+	PY_EXPORT_TEMPLATE_MEMBER_FUNCTION_AS_STATIC_FUNCTION(T, g, t_returner, test, ((glm::vec3))((long double)));
+	// PY_EXPORT_TEMPLATE_MEMBER_FUNCTION_AS_STATIC_FUNCTION_LAMBDA(T, g, []() { static T t; return &t; }, test, ((glm::vec3))((long double)));
 
 	PY_EXPORT_TEMPLATE_MEMBER_FUNCTION(T, h, test, ((int))((float)));
 
+	PY_EXPORT_MEMBER_FUNCTION(Zero, Z, test);
+	PY_EXPORT_MEMBER_FUNCTION(One, O, test);
 	
+	PY_EXPORT_TYPE_0FIELD(Zero, test);
+	PY_EXPORT_TYPE_1FIELD(One, test, o);
 	PY_EXPORT_TYPE(T, test, (i)(j));
 
 
