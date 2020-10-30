@@ -59,6 +59,29 @@ struct Vec
 	{
 		return { x + c.x, y + c.y, z + c.z };
 	}
+
+	Vec& increment(int i)
+	{
+		x += i;
+		y += i;
+		z += i;
+
+		return *this;
+	}
+
+	Vec& operator+=(const Vec& v)
+	{
+		x += v.x;
+		y += v.y;
+		z += v.z;
+
+		return *this;
+	}
+
+	Vec operator-() const
+	{
+		return { -x, -y, -z };
+	}
 };
 
 
@@ -108,8 +131,6 @@ public:
 
 	int i;
 	int j;
-
-	T& operator+=(int i);
 };
 
 T* t_returner()
@@ -121,8 +142,6 @@ T* t_returner()
 
 int main()
 {
-	// PY_EXPORT_MEMBER_OPERATOR(T, T::operator+=, cpp_python_embedder::EOperatorType::INPLACE_ADD, test);
-	
 	// https://docs.python.org/3/extending/extending.html
 	// https://www.codeproject.com/Articles/820116/Embedding-Python-program-in-a-C-Cplusplus-code
 	//
@@ -143,10 +162,13 @@ int main()
 		static C c(ii);
 		return &c;
 	}, test);
-	//PY_EXPORT_MEMBER_FUNCTION_AS_STATIC_FUNCTION(C, Print2, instance_returner, test);
+	// PY_EXPORT_MEMBER_FUNCTION_AS_STATIC_FUNCTION(C, Print2, instance_returner, test);
 
 	PY_EXPORT_MEMBER_FUNCTION(Vec, add, test);
 	PY_EXPORT_MEMBER_FUNCTION_NAME(Vec, add, q, test);
+	PY_EXPORT_MEMBER_FUNCTION(Vec, increment, test);
+	PY_EXPORT_MEMBER_OPERATOR(Vec, operator+=, cpp_python_embedder::EOperatorType::INPLACE_ADD, test);
+	PY_EXPORT_MEMBER_OPERATOR(Vec, operator-, cpp_python_embedder::EOperatorType::NEGATIVE, test);
 	PY_EXPORT_TYPE(Vec, test, (x)(y)(z));
 	
 	PY_EXPORT_TYPE_NAME(glm::vec3, vec3, test, (x)(y)(z));
@@ -159,7 +181,11 @@ int main()
 
 	PY_EXPORT_TEMPLATE_MEMBER_FUNCTION(T, h, test, ((int))((float)));
 
+	
 	PY_EXPORT_TYPE(T, test, (i)(j));
+
+
+	
 	
 	PY_EXPORT_GLOBAL_FUNCTION(f, test);
 	PY_EXPORT_GLOBAL_FUNCTION(h, test);
@@ -173,7 +199,7 @@ int main()
 	const char scriptName[] = "test.py";
 	FILE* script = _Py_fopen(scriptName, "rb");
 	PyRun_AnyFile(script, scriptName);
-
+	
 	Py_Finalize();
 	
 	return 0;

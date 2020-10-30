@@ -15,6 +15,14 @@ j(result)
 j(v)
 
 h(dot(result, v))
+
+v2 = Vec(10, 20, 30)
+v2 += Vec(1, 2, 3)
+f(v2)
+f(-v2)
+f(v2)
+
+f(v2.increment(2))
 #f(result)
 
 

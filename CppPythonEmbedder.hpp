@@ -112,7 +112,7 @@ using xxhash::literals::operator ""_xxh64;
 #define PY_EXPORT_MEMBER_FUNCTION(T, func, moduleName) PY_EXPORT_MEMBER_FUNCTION_NAME(T, func, func, moduleName)
 
 #define PY_EXPORT_GLOBAL_OPERATOR(func, operatorType, moduleName) cpp_python_embedder::Exporter<#moduleName##_xxh64>::RegisterGlobalOperator<decltype(&##func), &##func>(operatorType);
-#define PY_EXPORT_MEMBER_OPERATOR(T, func, operatorType, moduleName) cpp_python_embedder::Exporter<#moduleName##_xxh64>::RegisterMemberOperator<decltype(&##func), &##func, T>(operatorType);
+#define PY_EXPORT_MEMBER_OPERATOR(T, func, operatorType, moduleName) cpp_python_embedder::Exporter<#moduleName##_xxh64>::RegisterMemberOperator<decltype(&##T##::##func), &##T##::##func, T>(operatorType);
 
 #define PY_EXPORT_TEMPLATE_GLOBAL_FUNCTION(func, moduleName, templateParamSeq) PY_EXPORT_TEMPLATE_GLOBAL_FUNCTION_NAME(func, func, moduleName, templateParamSeq)
 #define PY_EXPORT_TEMPLATE_STATIC_FUNCTION(T, func, moduleName, templateParamSeq) PY_EXPORT_TEMPLATE_STATIC_FUNCTION_NAME(T, func, func, moduleName, templateParamSeq)
@@ -129,6 +129,7 @@ using xxhash::literals::operator ""_xxh64;
 namespace cpp_python_embedder
 {
 // TODO: Field count == 0 or 1
+// TODO: Way to choose between overloads (take explicit function ptr?)
 // TODO: Support user-defined data types as field
 // TODO: Support array as field (python list)
 // TODO: Support operator overloading https://docs.python.org/3/c-api/typeobj.html#number-object-structures tp_as_number
@@ -706,7 +707,7 @@ PyObject* FunctionDispatcher<FunctionPtrType, FunctionPtr, ReturnType, Parameter
 
 template <typename FunctionPtrType, FunctionPtrType FunctionPtr, typename ReturnType, size_t ParameterCount, typename ParameterTypeTuple, typename InstanceReturnFunctionType, InstanceReturnFunctionType InstanceReturnFunction, typename InstanceReturnFunctionReturnType, size_t InstanceReturnFunctionParameterCount, typename InstanceReturnFunctionParameterTypeTuple>
 PyObject* MemberFunctionAsStaticFunctionDispatcher<FunctionPtrType, FunctionPtr, ReturnType, ParameterCount, ParameterTypeTuple, InstanceReturnFunctionType, InstanceReturnFunction, InstanceReturnFunctionReturnType, InstanceReturnFunctionParameterCount, InstanceReturnFunctionParameterTypeTuple>
-	::ReplicatedFunction([[maybe_unused]] PyObject* self, PyObject* args)
+	::ReplicatedFunction(PyObject* self, PyObject* args)
 {
 	InstanceReturnFunctionParameterTypeTuple instanceReturnerArguments;
 
@@ -824,6 +825,12 @@ PyObject* MemberFunctionAsStaticFunctionDispatcher<FunctionPtrType, FunctionPtr,
 		std::apply(FunctionPtr, thisPtrAddedArguments);
 
 		toReturn = Py_None;
+	}
+	else if constexpr (std::is_same_v<ReturnType, std::remove_pointer_t<InstanceReturnFunctionReturnType>&>)
+	{
+		std::apply(FunctionPtr, thisPtrAddedArguments);
+
+		toReturn = Py_BuildValue("O&", &Converter<std::remove_reference_t<ReturnType>>::BuildValue, instance);
 	}
 	else
 	{
@@ -973,6 +980,12 @@ PyObject* MemberFunctionAsStaticFunctionLambdaDispatcher<FunctionPtrType, Functi
 
 		toReturn = Py_None;
 	}
+	else if constexpr (std::is_same_v<ReturnType, std::remove_pointer_t<InstanceReturnFunctionReturnType>&>)
+	{
+		std::apply(FunctionPtr, thisPtrAddedArguments);
+		
+		toReturn = Py_BuildValue("O&", &Converter<std::remove_reference_t<ReturnType>>::BuildValue, instance);
+	}
 	else
 	{
 		ReturnType returnValue = std::apply(FunctionPtr, thisPtrAddedArguments);
@@ -1063,6 +1076,12 @@ PyObject* MemberFunctionDispatcher<FunctionPtrType, FunctionPtr, ReturnType, Par
 
 		toReturn = Py_None;
 	}
+	else if constexpr (std::is_same_v<ReturnType, Class&>)
+	{
+		std::apply(FunctionPtr, thisPtrAddedArguments);
+		
+		toReturn = self;
+	}
 	else
 	{
 		ReturnType returnValue = std::apply(FunctionPtr, thisPtrAddedArguments);
@@ -1083,32 +1102,155 @@ PyObject* MemberFunctionDispatcher<FunctionPtrType, FunctionPtr, ReturnType, Par
 		}
 	}
 
+	reinterpret_cast<PyExportedClass<Class>*>(self)->t = instance;
+
 	Py_INCREF(toReturn);
 	return toReturn;
 }
 
 
 template <typename FunctionPtrType, FunctionPtrType FunctionPtr, typename ReturnType, size_t ParameterCount, typename ParameterTypeTuple, typename Class, EOperatorType Operator>
-PyObject* MemberOperatorDispatcher<FunctionPtrType, FunctionPtr, ReturnType, ParameterCount, ParameterTypeTuple, Class, Operator>::BinaryReplicatedFunction(PyObject* self, PyObject* args)
+PyObject* MemberOperatorDispatcher<FunctionPtrType, FunctionPtr, ReturnType, ParameterCount, ParameterTypeTuple, Class, Operator>::BinaryReplicatedFunction(PyObject* self, PyObject* arg)
 {
-	// TODO
+	ParameterTypeTuple arguments;
 
+	bool parseResult = true;
+	boost::mp11::mp_for_each<boost::mp11::mp_iota_c<ParameterCount - 1>>([&](auto i)
+		{
+			using NthParameterType = std::tuple_element_t<i, ParameterTypeTuple>;
+
+			TempVarType<NthParameterType> value;
+
+			if constexpr (std::is_fundamental_v<NthParameterType> || std::is_same_v<NthParameterType, const char*>)
+			{
+				const char* format = get_argument_type_format_string<NthParameterType>();
+
+				if (!PyArg_Parse(arg, format, &value))
+				{
+					parseResult = false;
+					return;
+				}
+			}
+			else if constexpr (std::is_same_v<NthParameterType, std::string>)
+			{
+				const char* temp;
+				if (!PyArg_Parse(arg, "s", &temp))
+				{
+					parseResult = false;
+					return;
+				}
+
+				value = temp;
+			}
+			else
+			{
+				if (!PyArg_Parse(arg, "O&", &Converter<NthParameterType>::ParseValue, &value))
+				{
+					parseResult = false;
+					return;
+				}
+			}
+
+			std::get<i>(arguments) = std::move(static_cast<NthParameterType>(value));
+		}
+	);
+
+	if (!parseResult)
+	{
+		return nullptr;
+	}
+
+	
+	Class instance;
+	Converter<Class>::ParseValue(self, &instance);
+
+	auto thisPtrAddedArguments = std::tuple_cat(std::make_tuple(&instance), arguments);
+
+	PyObject* toReturn;
+	if constexpr (std::is_same_v<ReturnType, void>)
+	{
+		std::apply(FunctionPtr, thisPtrAddedArguments);
+
+		toReturn = Py_None;
+	}
 	if constexpr (std::is_same_v<ReturnType, Class&>)
 	{
-		return self;
+		std::apply(FunctionPtr, thisPtrAddedArguments);
+		
+		toReturn = self;
 	}
+	else
+	{
+		ReturnType returnValue = std::apply(FunctionPtr, thisPtrAddedArguments);
+
+		if constexpr (std::is_fundamental_v<ReturnType> || std::is_same_v<ReturnType, const char*>)
+		{
+			const char* format = get_argument_type_format_string<ReturnType>();
+
+			toReturn = Py_BuildValue(format, returnValue);
+		}
+		else if constexpr (std::is_same_v<ReturnType, std::string>)
+		{
+			toReturn = Py_BuildValue("s", returnValue.c_str());
+		}
+		else
+		{
+			toReturn = Py_BuildValue("O&", &Converter<ReturnType>::BuildValue, returnValue);
+		}
+	}
+
+	reinterpret_cast<PyExportedClass<Class>*>(self)->t = instance;
+
+	Py_INCREF(toReturn);
+	return toReturn;
 }
 
 
 template <typename FunctionPtrType, FunctionPtrType FunctionPtr, typename ReturnType, size_t ParameterCount, typename ParameterTypeTuple, typename Class, EOperatorType Operator>
 PyObject* MemberOperatorDispatcher<FunctionPtrType, FunctionPtr, ReturnType, ParameterCount, ParameterTypeTuple, Class, Operator>::UnaryReplicatedFunction(PyObject* self)
 {
-	// TODO
-	
+	Class instance;
+	Converter<Class>::ParseValue(self, &instance);
+
+	auto thisPtrAddedArguments = std::make_tuple(&instance);
+
+	PyObject* toReturn;
+	if constexpr (std::is_same_v<ReturnType, void>)
+	{
+		std::apply(FunctionPtr, thisPtrAddedArguments);
+
+		toReturn = Py_None;
+	}
 	if constexpr (std::is_same_v<ReturnType, Class&>)
 	{
-		return self;
+		std::apply(FunctionPtr, thisPtrAddedArguments);
+		
+		toReturn = self;
 	}
+	else
+	{
+		ReturnType returnValue = std::apply(FunctionPtr, thisPtrAddedArguments);
+
+		if constexpr (std::is_fundamental_v<ReturnType> || std::is_same_v<ReturnType, const char*>)
+		{
+			const char* format = get_argument_type_format_string<ReturnType>();
+
+			toReturn = Py_BuildValue(format, returnValue);
+		}
+		else if constexpr (std::is_same_v<ReturnType, std::string>)
+		{
+			toReturn = Py_BuildValue("s", returnValue.c_str());
+		}
+		else
+		{
+			toReturn = Py_BuildValue("O&", &Converter<ReturnType>::BuildValue, returnValue);
+		}
+	}
+	
+	reinterpret_cast<PyExportedClass<Class>*>(self)->t = instance;
+
+	Py_INCREF(toReturn);
+	return toReturn;
 }
 
 
@@ -1304,15 +1446,16 @@ void Exporter<ModuleNameHashValue>::RegisterMemberFunctionAsStaticFunction(const
 	using ReturnType = typename result_type<FunctionPtrType>::type;
 	using ParameterTypes = parameter_types<FunctionPtrType>;
 	using ParameterTypeTuple = TailsParameterTuple<ParameterTypes, parameterCount>;
-	static_assert(ValidityChecker<is_supported_parameter_type, ParameterTypeTuple, parameterCount - 1>::value);
-	static_assert(is_supported_return_type_v<ReturnType>);
-
+	
 	constexpr size_t instanceReturnerParameterCount = function_arity<InstanceReturnFunctionType>::value;
 	using InstanceReturnerReturnType = typename result_type<InstanceReturnFunctionType>::type;
 	using InstanceReturnerParameterTypes = parameter_types<InstanceReturnFunctionType>;
 	using InstanceReturnerParameterTypeTuple = ParameterTuple<InstanceReturnerParameterTypes, instanceReturnerParameterCount>;
+	
 	static_assert(ValidityChecker<is_supported_parameter_type, InstanceReturnerParameterTypeTuple, instanceReturnerParameterCount>::value);
 	static_assert(std::is_same_v<InstanceReturnerReturnType, remove_const_ref_t<typename boost::mpl::at_c<ParameterTypes, 0>::type>*>);
+	static_assert(ValidityChecker<is_supported_parameter_type, ParameterTypeTuple, parameterCount - 1>::value);
+	static_assert(is_supported_return_type_v<ReturnType> || std::is_same_v<ReturnType, std::remove_pointer_t<InstanceReturnerReturnType>&>);
 	
 	using InstantiatedDispatcher = MemberFunctionAsStaticFunctionDispatcher<FunctionPtrType, FunctionPtr, ReturnType, parameterCount, ParameterTypeTuple,
 		InstanceReturnFunctionType, InstanceReturnFunction, InstanceReturnerReturnType, instanceReturnerParameterCount, InstanceReturnerParameterTypeTuple>;
@@ -1333,15 +1476,16 @@ void Exporter<ModuleNameHashValue>::RegisterMemberFunctionAsStaticFunctionLambda
 	using ReturnType = typename result_type<FunctionPtrType>::type;
 	using ParameterTypes = parameter_types<FunctionPtrType>;
 	using ParameterTypeTuple = TailsParameterTuple<ParameterTypes, parameterCount>;
-	static_assert(ValidityChecker<is_supported_parameter_type, ParameterTypeTuple, parameterCount - 1>::value);
-	static_assert(is_supported_return_type_v<ReturnType>);
-
+	
 	constexpr size_t instanceReturnerParameterCount = function_arity<InstanceReturnFunctionType>::value;
 	using InstanceReturnerReturnType = typename result_type<InstanceReturnFunctionType>::type;
 	using InstanceReturnerParameterTypes = parameter_types<InstanceReturnFunctionType>;
 	using InstanceReturnerParameterTypeTuple = TailsParameterTuple<InstanceReturnerParameterTypes, instanceReturnerParameterCount>;
+
 	static_assert(ValidityChecker<is_supported_parameter_type, InstanceReturnerParameterTypeTuple, instanceReturnerParameterCount - 1>::value);
 	static_assert(std::is_same_v<InstanceReturnerReturnType, remove_const_ref_t<typename boost::mpl::at_c<ParameterTypes, 0>::type>*>);
+	static_assert(ValidityChecker<is_supported_parameter_type, ParameterTypeTuple, parameterCount - 1>::value);
+	static_assert(is_supported_return_type_v<ReturnType> || std::is_same_v<ReturnType, std::remove_pointer_t<InstanceReturnerReturnType>&>);
 
 	using InstantiatedDispatcher = MemberFunctionAsStaticFunctionLambdaDispatcher<FunctionPtrType, FunctionPtr, ReturnType, parameterCount, ParameterTypeTuple,
 		InstanceReturnFunctionType, InstanceReturnFunction, InstanceReturnerReturnType, instanceReturnerParameterCount, InstanceReturnerParameterTypeTuple,
@@ -1365,8 +1509,9 @@ void Exporter<ModuleNameHashValue>::RegisterMemberFunction(const char* functionN
 	using ReturnType = typename result_type<FunctionPtrType>::type;
 	using ParameterTypes = parameter_types<FunctionPtrType>;
 	using ParameterTypeTuple = TailsParameterTuple<ParameterTypes, parameterCount>;
+	
 	static_assert(ValidityChecker<is_supported_parameter_type, ParameterTypeTuple, parameterCount - 1>::value);
-	static_assert(is_supported_return_type_v<ReturnType>);
+	static_assert(is_supported_return_type_v<ReturnType> || std::is_same_v<ReturnType, Class&>);
 
 	using InstantiatedDispatcher = MemberFunctionDispatcher<FunctionPtrType, FunctionPtr, ReturnType, parameterCount, ParameterTypeTuple, Class>;
 
@@ -1406,135 +1551,144 @@ void Exporter<ModuleNameHashValue>::RegisterMemberOperator(const EOperatorType o
 	using ReturnType = typename result_type<FunctionPtrType>::type;
 	using ParameterTypes = parameter_types<FunctionPtrType>;
 	using ParameterTypeTuple = TailsParameterTuple<ParameterTypes, parameterCount>;
-	static_assert(ValidityChecker<is_supported_parameter_type, ParameterTypeTuple, parameterCount>::value);
-	static_assert(is_supported_return_type_v<ReturnType> || std::is_same_v<ReturnType&>);
-
 	
-	switch (operatorType) 
+	static_assert(ValidityChecker<is_supported_parameter_type, ParameterTypeTuple, parameterCount - 1>::value);
+	static_assert(is_supported_return_type_v<ReturnType> || std::is_same_v<ReturnType, Class&>);
+
+
+	if constexpr (parameterCount == 1)  // unary
 	{
-		case EOperatorType::ADD:
-			PyExportedClass<Class>::numberMethods.nb_add = &MemberOperatorDispatcher<FunctionPtrType, FunctionPtr, ReturnType, parameterCount, ParameterTypeTuple, Class, EOperatorType::ADD>::BinaryReplicatedFunction;
-			break;
+		switch (operatorType)
+		{
+			case EOperatorType::POSITIVE:
+				PyExportedClass<Class>::numberMethods.nb_positive = &MemberOperatorDispatcher<FunctionPtrType, FunctionPtr, ReturnType, parameterCount, ParameterTypeTuple, Class, EOperatorType::POSITIVE>::UnaryReplicatedFunction;
+				break;
 
-		case EOperatorType::SUBTRACT:
-			PyExportedClass<Class>::numberMethods.nb_subtract = &MemberOperatorDispatcher<FunctionPtrType, FunctionPtr, ReturnType, parameterCount, ParameterTypeTuple, Class, EOperatorType::SUBTRACT>::BinaryReplicatedFunction;
-			break;
+			case EOperatorType::NEGATIVE:
+				PyExportedClass<Class>::numberMethods.nb_negative = &MemberOperatorDispatcher<FunctionPtrType, FunctionPtr, ReturnType, parameterCount, ParameterTypeTuple, Class, EOperatorType::NEGATIVE>::UnaryReplicatedFunction;
+				break;
 
-		case EOperatorType::MULTIPLY:
-			PyExportedClass<Class>::numberMethods.nb_multiply = &MemberOperatorDispatcher<FunctionPtrType, FunctionPtr, ReturnType, parameterCount, ParameterTypeTuple, Class, EOperatorType::MULTIPLY>::BinaryReplicatedFunction;
-			break;
+			case EOperatorType::INVERT:
+				PyExportedClass<Class>::numberMethods.nb_invert = &MemberOperatorDispatcher<FunctionPtrType, FunctionPtr, ReturnType, parameterCount, ParameterTypeTuple, Class, EOperatorType::INVERT>::UnaryReplicatedFunction;
+				break;
 
-		case EOperatorType::DIVIDE:
-			PyExportedClass<Class>::numberMethods.nb_true_divide = &MemberOperatorDispatcher<FunctionPtrType, FunctionPtr, ReturnType, parameterCount, ParameterTypeTuple, Class, EOperatorType::DIVIDE>::BinaryReplicatedFunction;
-			break;
+			case EOperatorType::INT:
+				PyExportedClass<Class>::numberMethods.nb_int = &MemberOperatorDispatcher<FunctionPtrType, FunctionPtr, ReturnType, parameterCount, ParameterTypeTuple, Class, EOperatorType::INT>::UnaryReplicatedFunction;
+				break;
 
-		case EOperatorType::REMAINDER:
-			PyExportedClass<Class>::numberMethods.nb_remainder = &MemberOperatorDispatcher<FunctionPtrType, FunctionPtr, ReturnType, parameterCount, ParameterTypeTuple, Class, EOperatorType::REMAINDER>::BinaryReplicatedFunction;
-			break;
+			case EOperatorType::FLOAT:
+				PyExportedClass<Class>::numberMethods.nb_float = &MemberOperatorDispatcher<FunctionPtrType, FunctionPtr, ReturnType, parameterCount, ParameterTypeTuple, Class, EOperatorType::FLOAT>::UnaryReplicatedFunction;
+				break;
+		}
+	}
+	else
+	{
+		switch (operatorType)
+		{
+			case EOperatorType::ADD:
+				PyExportedClass<Class>::numberMethods.nb_add = &MemberOperatorDispatcher<FunctionPtrType, FunctionPtr, ReturnType, parameterCount, ParameterTypeTuple, Class, EOperatorType::ADD>::BinaryReplicatedFunction;
+				break;
 
-		case EOperatorType::POSITIVE:
-			PyExportedClass<Class>::numberMethods.nb_positive = &MemberOperatorDispatcher<FunctionPtrType, FunctionPtr, ReturnType, parameterCount, ParameterTypeTuple, Class, EOperatorType::POSITIVE>::UnaryReplicatedFunction;
-			break;
+			case EOperatorType::SUBTRACT:
+				PyExportedClass<Class>::numberMethods.nb_subtract = &MemberOperatorDispatcher<FunctionPtrType, FunctionPtr, ReturnType, parameterCount, ParameterTypeTuple, Class, EOperatorType::SUBTRACT>::BinaryReplicatedFunction;
+				break;
 
-		case EOperatorType::NEGATIVE:
-			PyExportedClass<Class>::numberMethods.nb_negative = &MemberOperatorDispatcher<FunctionPtrType, FunctionPtr, ReturnType, parameterCount, ParameterTypeTuple, Class, EOperatorType::NEGATIVE>::UnaryReplicatedFunction;
-			break;
+			case EOperatorType::MULTIPLY:
+				PyExportedClass<Class>::numberMethods.nb_multiply = &MemberOperatorDispatcher<FunctionPtrType, FunctionPtr, ReturnType, parameterCount, ParameterTypeTuple, Class, EOperatorType::MULTIPLY>::BinaryReplicatedFunction;
+				break;
 
-		case EOperatorType::XOR:
-			PyExportedClass<Class>::numberMethods.nb_xor = &MemberOperatorDispatcher<FunctionPtrType, FunctionPtr, ReturnType, parameterCount, ParameterTypeTuple, Class, EOperatorType::XOR>::BinaryReplicatedFunction;
-			break;
+			case EOperatorType::DIVIDE:
+				PyExportedClass<Class>::numberMethods.nb_true_divide = &MemberOperatorDispatcher<FunctionPtrType, FunctionPtr, ReturnType, parameterCount, ParameterTypeTuple, Class, EOperatorType::DIVIDE>::BinaryReplicatedFunction;
+				break;
 
-		case EOperatorType::AND:
-			PyExportedClass<Class>::numberMethods.nb_and = &MemberOperatorDispatcher<FunctionPtrType, FunctionPtr, ReturnType, parameterCount, ParameterTypeTuple, Class, EOperatorType::AND>::BinaryReplicatedFunction;
-			break;
+			case EOperatorType::REMAINDER:
+				PyExportedClass<Class>::numberMethods.nb_remainder = &MemberOperatorDispatcher<FunctionPtrType, FunctionPtr, ReturnType, parameterCount, ParameterTypeTuple, Class, EOperatorType::REMAINDER>::BinaryReplicatedFunction;
+				break;
 
-		case EOperatorType::OR:
-			PyExportedClass<Class>::numberMethods.nb_or = &MemberOperatorDispatcher<FunctionPtrType, FunctionPtr, ReturnType, parameterCount, ParameterTypeTuple, Class, EOperatorType::OR>::BinaryReplicatedFunction;
-			break;
+			case EOperatorType::XOR:
+				PyExportedClass<Class>::numberMethods.nb_xor = &MemberOperatorDispatcher<FunctionPtrType, FunctionPtr, ReturnType, parameterCount, ParameterTypeTuple, Class, EOperatorType::XOR>::BinaryReplicatedFunction;
+				break;
 
-		case EOperatorType::INVERT:
-			PyExportedClass<Class>::numberMethods.nb_invert = &MemberOperatorDispatcher<FunctionPtrType, FunctionPtr, ReturnType, parameterCount, ParameterTypeTuple, Class, EOperatorType::INVERT>::UnaryReplicatedFunction;
-			break;
+			case EOperatorType::AND:
+				PyExportedClass<Class>::numberMethods.nb_and = &MemberOperatorDispatcher<FunctionPtrType, FunctionPtr, ReturnType, parameterCount, ParameterTypeTuple, Class, EOperatorType::AND>::BinaryReplicatedFunction;
+				break;
 
-		case EOperatorType::LEFT_SHIFT:
-			PyExportedClass<Class>::numberMethods.nb_lshift = &MemberOperatorDispatcher<FunctionPtrType, FunctionPtr, ReturnType, parameterCount, ParameterTypeTuple, Class, EOperatorType::LEFT_SHIFT>::BinaryReplicatedFunction;
-			break;
+			case EOperatorType::OR:
+				PyExportedClass<Class>::numberMethods.nb_or = &MemberOperatorDispatcher<FunctionPtrType, FunctionPtr, ReturnType, parameterCount, ParameterTypeTuple, Class, EOperatorType::OR>::BinaryReplicatedFunction;
+				break;
 
-		case EOperatorType::RIGHT_SHIFT:
-			PyExportedClass<Class>::numberMethods.nb_rshift = &MemberOperatorDispatcher<FunctionPtrType, FunctionPtr, ReturnType, parameterCount, ParameterTypeTuple, Class, EOperatorType::RIGHT_SHIFT>::BinaryReplicatedFunction;
-			break;
+			case EOperatorType::LEFT_SHIFT:
+				PyExportedClass<Class>::numberMethods.nb_lshift = &MemberOperatorDispatcher<FunctionPtrType, FunctionPtr, ReturnType, parameterCount, ParameterTypeTuple, Class, EOperatorType::LEFT_SHIFT>::BinaryReplicatedFunction;
+				break;
 
-		case EOperatorType::INPLACE_ADD:
-			PyExportedClass<Class>::numberMethods.nb_inplace_add = &MemberOperatorDispatcher<FunctionPtrType, FunctionPtr, ReturnType, parameterCount, ParameterTypeTuple, Class, EOperatorType::INPLACE_ADD>::BinaryReplicatedFunction;
-			break;
+			case EOperatorType::RIGHT_SHIFT:
+				PyExportedClass<Class>::numberMethods.nb_rshift = &MemberOperatorDispatcher<FunctionPtrType, FunctionPtr, ReturnType, parameterCount, ParameterTypeTuple, Class, EOperatorType::RIGHT_SHIFT>::BinaryReplicatedFunction;
+				break;
 
-		case EOperatorType::INPLACE_SUBTRACT:
-			PyExportedClass<Class>::numberMethods.nb_inplace_subtract = &MemberOperatorDispatcher<FunctionPtrType, FunctionPtr, ReturnType, parameterCount, ParameterTypeTuple, Class, EOperatorType::INPLACE_SUBTRACT>::BinaryReplicatedFunction;
-			break;
+			case EOperatorType::INPLACE_ADD:
+				PyExportedClass<Class>::numberMethods.nb_inplace_add = &MemberOperatorDispatcher<FunctionPtrType, FunctionPtr, ReturnType, parameterCount, ParameterTypeTuple, Class, EOperatorType::INPLACE_ADD>::BinaryReplicatedFunction;
+				break;
 
-		case EOperatorType::INPLACE_MULTIPLY:
-			PyExportedClass<Class>::numberMethods.nb_inplace_multiply = &MemberOperatorDispatcher<FunctionPtrType, FunctionPtr, ReturnType, parameterCount, ParameterTypeTuple, Class, EOperatorType::INPLACE_MULTIPLY>::BinaryReplicatedFunction;
-			break;
+			case EOperatorType::INPLACE_SUBTRACT:
+				PyExportedClass<Class>::numberMethods.nb_inplace_subtract = &MemberOperatorDispatcher<FunctionPtrType, FunctionPtr, ReturnType, parameterCount, ParameterTypeTuple, Class, EOperatorType::INPLACE_SUBTRACT>::BinaryReplicatedFunction;
+				break;
 
-		case EOperatorType::INPLACE_DIVIDE:
-			PyExportedClass<Class>::numberMethods.nb_inplace_true_divide = &MemberOperatorDispatcher<FunctionPtrType, FunctionPtr, ReturnType, parameterCount, ParameterTypeTuple, Class, EOperatorType::INPLACE_DIVIDE>::BinaryReplicatedFunction;
-			break;
+			case EOperatorType::INPLACE_MULTIPLY:
+				PyExportedClass<Class>::numberMethods.nb_inplace_multiply = &MemberOperatorDispatcher<FunctionPtrType, FunctionPtr, ReturnType, parameterCount, ParameterTypeTuple, Class, EOperatorType::INPLACE_MULTIPLY>::BinaryReplicatedFunction;
+				break;
 
-		case EOperatorType::INPLACE_REMAINDER:
-			PyExportedClass<Class>::numberMethods.nb_inplace_remainder = &MemberOperatorDispatcher<FunctionPtrType, FunctionPtr, ReturnType, parameterCount, ParameterTypeTuple, Class, EOperatorType::INPLACE_REMAINDER>::BinaryReplicatedFunction;
-			break;
+			case EOperatorType::INPLACE_DIVIDE:
+				PyExportedClass<Class>::numberMethods.nb_inplace_true_divide = &MemberOperatorDispatcher<FunctionPtrType, FunctionPtr, ReturnType, parameterCount, ParameterTypeTuple, Class, EOperatorType::INPLACE_DIVIDE>::BinaryReplicatedFunction;
+				break;
 
-		case EOperatorType::INPLACE_XOR:
-			PyExportedClass<Class>::numberMethods.nb_inplace_xor = &MemberOperatorDispatcher<FunctionPtrType, FunctionPtr, ReturnType, parameterCount, ParameterTypeTuple, Class, EOperatorType::INPLACE_XOR>::BinaryReplicatedFunction;
-			break;
+			case EOperatorType::INPLACE_REMAINDER:
+				PyExportedClass<Class>::numberMethods.nb_inplace_remainder = &MemberOperatorDispatcher<FunctionPtrType, FunctionPtr, ReturnType, parameterCount, ParameterTypeTuple, Class, EOperatorType::INPLACE_REMAINDER>::BinaryReplicatedFunction;
+				break;
 
-		case EOperatorType::INPLACE_AND:
-			PyExportedClass<Class>::numberMethods.nb_inplace_and = &MemberOperatorDispatcher<FunctionPtrType, FunctionPtr, ReturnType, parameterCount, ParameterTypeTuple, Class, EOperatorType::INPLACE_AND>::BinaryReplicatedFunction;
-			break;
+			case EOperatorType::INPLACE_XOR:
+				PyExportedClass<Class>::numberMethods.nb_inplace_xor = &MemberOperatorDispatcher<FunctionPtrType, FunctionPtr, ReturnType, parameterCount, ParameterTypeTuple, Class, EOperatorType::INPLACE_XOR>::BinaryReplicatedFunction;
+				break;
 
-		case EOperatorType::INPLACE_OR:
-			PyExportedClass<Class>::numberMethods.nb_inplace_or = &MemberOperatorDispatcher<FunctionPtrType, FunctionPtr, ReturnType, parameterCount, ParameterTypeTuple, Class, EOperatorType::INPLACE_OR>::BinaryReplicatedFunction;
-			break;
+			case EOperatorType::INPLACE_AND:
+				PyExportedClass<Class>::numberMethods.nb_inplace_and = &MemberOperatorDispatcher<FunctionPtrType, FunctionPtr, ReturnType, parameterCount, ParameterTypeTuple, Class, EOperatorType::INPLACE_AND>::BinaryReplicatedFunction;
+				break;
 
-		case EOperatorType::INPLACE_LEFT_SHIFT:
-			PyExportedClass<Class>::numberMethods.nb_inplace_lshift = &MemberOperatorDispatcher<FunctionPtrType, FunctionPtr, ReturnType, parameterCount, ParameterTypeTuple, Class, EOperatorType::INPLACE_LEFT_SHIFT>::BinaryReplicatedFunction;
-			break;
+			case EOperatorType::INPLACE_OR:
+				PyExportedClass<Class>::numberMethods.nb_inplace_or = &MemberOperatorDispatcher<FunctionPtrType, FunctionPtr, ReturnType, parameterCount, ParameterTypeTuple, Class, EOperatorType::INPLACE_OR>::BinaryReplicatedFunction;
+				break;
 
-		case EOperatorType::INPLACE_RIGHT_SHIFT:
-			PyExportedClass<Class>::numberMethods.nb_inplace_rshift = &MemberOperatorDispatcher<FunctionPtrType, FunctionPtr, ReturnType, parameterCount, ParameterTypeTuple, Class, EOperatorType::INPLACE_RIGHT_SHIFT>::BinaryReplicatedFunction;
-			break;
+			case EOperatorType::INPLACE_LEFT_SHIFT:
+				PyExportedClass<Class>::numberMethods.nb_inplace_lshift = &MemberOperatorDispatcher<FunctionPtrType, FunctionPtr, ReturnType, parameterCount, ParameterTypeTuple, Class, EOperatorType::INPLACE_LEFT_SHIFT>::BinaryReplicatedFunction;
+				break;
 
-		case EOperatorType::INT:
-			PyExportedClass<Class>::numberMethods.nb_int = &MemberOperatorDispatcher<FunctionPtrType, FunctionPtr, ReturnType, parameterCount, ParameterTypeTuple, Class, EOperatorType::INT>::UnaryReplicatedFunction;
-			break;
+			case EOperatorType::INPLACE_RIGHT_SHIFT:
+				PyExportedClass<Class>::numberMethods.nb_inplace_rshift = &MemberOperatorDispatcher<FunctionPtrType, FunctionPtr, ReturnType, parameterCount, ParameterTypeTuple, Class, EOperatorType::INPLACE_RIGHT_SHIFT>::BinaryReplicatedFunction;
+				break;
 
-		case EOperatorType::FLOAT:
-			PyExportedClass<Class>::numberMethods.nb_float = &MemberOperatorDispatcher<FunctionPtrType, FunctionPtr, ReturnType, parameterCount, ParameterTypeTuple, Class, EOperatorType::FLOAT>::UnaryReplicatedFunction;
-			break;
+			case EOperatorType::SUBSCRIPT:
+				break;
 
-		case EOperatorType::SUBSCRIPT:
-			break;
+			case EOperatorType::EQUAL:
+				break;
 
-		case EOperatorType::EQUAL:
-			break;
+			case EOperatorType::NOT_EQUAL:
+				break;
 
-		case EOperatorType::NOT_EQUAL:
-			break;
+			case EOperatorType::LESS:
+				break;
 
-		case EOperatorType::LESS:
-			break;
+			case EOperatorType::LESS_OR_EQUAL:
+				break;
 
-		case EOperatorType::LESS_OR_EQUAL:
-			break;
+			case EOperatorType::GREATER:
+				break;
 
-		case EOperatorType::GREATER:
-			break;
+			case EOperatorType::GREATER_OR_EQUAL:
+				break;
 
-		case EOperatorType::GREATER_OR_EQUAL:
-			break;
-
-		default:
-			break;
+			default:
+				break;
+		}
 	}
 }
 
@@ -1566,6 +1720,7 @@ void Exporter<ModuleNameHashValue>::RegisterTemplateFunction(const char* functio
 			using ReturnType = typename result_type<FunctionPtrType>::type;
 			using ParameterTypes = parameter_types<FunctionPtrType>;
 			using ParameterTypeTuple = ParameterTuple<ParameterTypes, parameterCount>;
+		
 			static_assert(ValidityChecker<is_supported_parameter_type, ParameterTypeTuple, parameterCount>::value);
 			static_assert(is_supported_return_type_v<ReturnType>);
 		
@@ -1605,13 +1760,14 @@ void Exporter<ModuleNameHashValue>::RegisterTemplateMemberFunctionAsStaticFuncti
 			using ReturnType = typename result_type<FunctionPtrType>::type;
 			using ParameterTypes = parameter_types<FunctionPtrType>;
 			using ParameterTypeTuple = TailsParameterTuple<ParameterTypes, parameterCount>;
-			static_assert(ValidityChecker<is_supported_parameter_type, ParameterTypeTuple, parameterCount - 1>::value);
-			static_assert(is_supported_return_type_v<ReturnType>);
 
 			constexpr size_t instanceReturnerParameterCount = function_arity<InstanceReturnFunctionType>::value;
 			using InstanceReturnerReturnType = typename result_type<InstanceReturnFunctionType>::type;
 			using InstanceReturnerParameterTypes = parameter_types<InstanceReturnFunctionType>;
 			using InstanceReturnerParameterTypeTuple = ParameterTuple<InstanceReturnerParameterTypes, instanceReturnerParameterCount>;
+
+			static_assert(ValidityChecker<is_supported_parameter_type, ParameterTypeTuple, parameterCount - 1>::value);
+			static_assert(is_supported_return_type_v<ReturnType> || std::is_same_v<ReturnType, std::remove_pointer_t<InstanceReturnerReturnType>&>);
 			static_assert(ValidityChecker<is_supported_parameter_type, InstanceReturnerParameterTypeTuple, instanceReturnerParameterCount>::value);
 			static_assert(std::is_same_v<InstanceReturnerReturnType, remove_const_ref_t<typename boost::mpl::at_c<ParameterTypes, 0>::type>*>);
 		
@@ -1651,13 +1807,14 @@ void Exporter<ModuleNameHashValue>::RegisterTemplateMemberFunctionAsStaticFuncti
 			using ReturnType = typename result_type<FunctionPtrType>::type;
 			using ParameterTypes = parameter_types<FunctionPtrType>;
 			using ParameterTypeTuple = TailsParameterTuple<ParameterTypes, parameterCount>;
-			static_assert(ValidityChecker<is_supported_parameter_type, ParameterTypeTuple, parameterCount - 1>::value);
-			static_assert(is_supported_return_type_v<ReturnType>);
 
 			constexpr size_t instanceReturnerParameterCount = function_arity<InstanceReturnFunctionType>::value;
 			using InstanceReturnerReturnType = typename result_type<InstanceReturnFunctionType>::type;
 			using InstanceReturnerParameterTypes = parameter_types<InstanceReturnFunctionType>;
 			using InstanceReturnerParameterTypeTuple = TailsParameterTuple<InstanceReturnerParameterTypes, instanceReturnerParameterCount>;
+
+			static_assert(ValidityChecker<is_supported_parameter_type, ParameterTypeTuple, parameterCount - 1>::value);
+			static_assert(is_supported_return_type_v<ReturnType> || std::is_same_v<ReturnType, std::remove_pointer_t<InstanceReturnerReturnType>&>);
 			static_assert(ValidityChecker<is_supported_parameter_type, InstanceReturnerParameterTypeTuple, instanceReturnerParameterCount - 1>::value);
 			static_assert(std::is_same_v<InstanceReturnerReturnType, remove_const_ref_t<typename boost::mpl::at_c<ParameterTypes, 0>::type>*>);
 
@@ -1700,8 +1857,9 @@ void Exporter<ModuleNameHashValue>::RegisterTemplateMemberFunction(const char* f
 			using ReturnType = typename result_type<FunctionPtrType>::type;
 			using ParameterTypes = parameter_types<FunctionPtrType>;
 			using ParameterTypeTuple = TailsParameterTuple<ParameterTypes, parameterCount>;
+		
 			static_assert(ValidityChecker<is_supported_parameter_type, ParameterTypeTuple, parameterCount - 1>::value);
-			static_assert(is_supported_return_type_v<ReturnType>);
+			static_assert(is_supported_return_type_v<ReturnType> || std::is_same_v<ReturnType, Class&>);
 
 			using InstantiatedDispatcher = MemberFunctionDispatcher<FunctionPtrType, functionPtr, ReturnType, parameterCount, ParameterTypeTuple, Class>;
 
