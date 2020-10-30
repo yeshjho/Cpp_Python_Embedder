@@ -76,10 +76,13 @@ using xxhash::literals::operator ""_xxh64;
 #define _PY_EXPORTER_REMOVE_PARENTHESIS_HELPER(x) x
 #define _PY_EXPORTER_REMOVE_PARENTHESIS(x) _PY_EXPORTER_REMOVE_PARENTHESIS_HELPER(_PY_EXPORTER_REMOVE_PARENTHESIS_EXPAND_HELPER x)
 
-#define _PY_EXPORTER_TEMPLATE_INSTANCE(func, templateParam) cpp_python_embedder::FunctionPtrTypePair<decltype(&##func<_PY_EXPORTER_REMOVE_PARENTHESIS(templateParam)>), &##func<_PY_EXPORTER_REMOVE_PARENTHESIS(templateParam)>, cpp_python_embedder::TypeList<_PY_EXPORTER_REMOVE_PARENTHESIS(templateParam)>>,
+#define _PY_EXPORTER_STRINGIFY_HELPER(...) #__VA_ARGS__
+#define _PY_EXPORTER_STRINGIFY(x) _PY_EXPORTER_REMOVE_PARENTHESIS_HELPER(_PY_EXPORTER_STRINGIFY_HELPER x)
+
+#define _PY_EXPORTER_TEMPLATE_INSTANCE(func, templateParam) cpp_python_embedder::TemplateInstanceInfo<decltype(&(##func<_PY_EXPORTER_REMOVE_PARENTHESIS(templateParam)>)), &(##func<_PY_EXPORTER_REMOVE_PARENTHESIS(templateParam)>), _PY_EXPORTER_STRINGIFY(templateParam)##_xxh64>,
 #define _PY_EXPORTER_TEMPLATE_INSTANCE_EXPANDER(_, func, templateParam) _PY_EXPORTER_TEMPLATE_INSTANCE(func, templateParam)
 #define _PY_EXPORTER_HEADS_TEMPLATE_SPECIALIZES(func, seq) BOOST_PP_SEQ_FOR_EACH(_PY_EXPORTER_TEMPLATE_INSTANCE_EXPANDER, func, seq)
-#define _PY_EXPORTER_TEMPLATE_INSTANCES(func, seq) _PY_EXPORTER_HEADS_TEMPLATE_SPECIALIZES(func, BOOST_PP_SEQ_POP_BACK(seq)) cpp_python_embedder::FunctionPtrTypePair<decltype(&##func<_PY_EXPORTER_REMOVE_PARENTHESIS(BOOST_PP_SEQ_HEAD(BOOST_PP_SEQ_REVERSE(seq)))>), &##func<_PY_EXPORTER_REMOVE_PARENTHESIS(BOOST_PP_SEQ_HEAD(BOOST_PP_SEQ_REVERSE(seq)))>, cpp_python_embedder::TypeList<_PY_EXPORTER_REMOVE_PARENTHESIS(BOOST_PP_SEQ_HEAD(BOOST_PP_SEQ_REVERSE(seq)))>>
+#define _PY_EXPORTER_TEMPLATE_INSTANCES(func, seq) _PY_EXPORTER_HEADS_TEMPLATE_SPECIALIZES(func, BOOST_PP_SEQ_POP_BACK(seq)) cpp_python_embedder::TemplateInstanceInfo<decltype(&(##func<_PY_EXPORTER_REMOVE_PARENTHESIS(BOOST_PP_SEQ_HEAD(BOOST_PP_SEQ_REVERSE(seq)))>)), &(##func<_PY_EXPORTER_REMOVE_PARENTHESIS(BOOST_PP_SEQ_HEAD(BOOST_PP_SEQ_REVERSE(seq)))>), _PY_EXPORTER_STRINGIFY(BOOST_PP_SEQ_HEAD(BOOST_PP_SEQ_REVERSE(seq)))##_xxh64>
 
 
 
@@ -92,8 +95,10 @@ using xxhash::literals::operator ""_xxh64;
 
 #define PY_EXPORT_TEMPLATE_GLOBAL_FUNCTION_NAME(func, funcName, moduleName, templateParamSeq) cpp_python_embedder::Exporter<#moduleName##_xxh64>::RegisterTemplateFunction<#funcName##_xxh64, _PY_EXPORTER_TEMPLATE_INSTANCES(func, templateParamSeq)>(#funcName)
 #define PY_EXPORT_TEMPLATE_STATIC_FUNCTION_NAME(T, func, funcName, moduleName, templateParamSeq) PY_EXPORT_TEMPLATE_GLOBAL_FUNCTION_NAME(T##::##func, funcName, moduleName, templateParamSeq)
-#define PY_EXPORT_TEMPLATE_MEMBER_FUNCTION_AS_STATIC_FUNCTION_NAME(T, func, funcName, instanceReturner, moduleName, templateParamSeq)  // TODO
-#define PY_EXPORT_TEMPLATE_MEMBER_FUNCTION_NAME(T, func, funcName, moduleName, templateParamSeq)  // TODO
+#define PY_EXPORT_TEMPLATE_MEMBER_FUNCTION_AS_STATIC_FUNCTION_NAME(T, func, funcName, instanceReturner, moduleName, templateParamSeq) cpp_python_embedder::Exporter<#moduleName##_xxh64>::RegisterTemplateMemberFunctionAsStaticFunction<#T###funcName##_xxh64, decltype(&##instanceReturner), &##instanceReturner, _PY_EXPORTER_TEMPLATE_INSTANCES(T##::##func, templateParamSeq)>(#funcName)
+#define PY_EXPORT_TEMPLATE_MEMBER_FUNCTION_AS_STATIC_FUNCTION_LAMBDA_NAME(T, func, funcName, instanceReturner, moduleName, templateParamSeq) static auto T##funcName##moduleName##lambda = instanceReturner; \
+	cpp_python_embedder::Exporter<#moduleName##_xxh64>::RegisterTemplateMemberFunctionAsStaticFunctionLambda<#T###funcName##_xxh64, decltype(&decltype(T##funcName##moduleName##lambda##)::operator()), &decltype(T##funcName##moduleName##lambda##)::operator(), decltype(&##T##funcName##moduleName##lambda), &##T##funcName##moduleName##lambda, _PY_EXPORTER_TEMPLATE_INSTANCES(T##::##func, templateParamSeq)>(#funcName)
+#define PY_EXPORT_TEMPLATE_MEMBER_FUNCTION_NAME(T, func, funcName, moduleName, templateParamSeq) cpp_python_embedder::Exporter<#moduleName##_xxh64>::RegisterTemplateMemberFunction<#T###funcName##_xxh64, T, _PY_EXPORTER_TEMPLATE_INSTANCES(T##::##func, templateParamSeq)>(#funcName)
 
 #define PY_EXPORT_TYPE_NAME(T, typeName, moduleName, fieldSeq) cpp_python_embedder::Exporter<#moduleName##_xxh64>::RegisterType<T, std::integer_sequence<size_t, _PY_EXPORTER_FIELD_OFFSETS(T, fieldSeq)>, _PY_EXPORTER_FIELD_TYPES(T, fieldSeq)>(#typeName, { _PY_EXPORTER_FIELDS(T, fieldSeq) })
 
@@ -112,6 +117,7 @@ using xxhash::literals::operator ""_xxh64;
 #define PY_EXPORT_TEMPLATE_GLOBAL_FUNCTION(func, moduleName, templateParamSeq) PY_EXPORT_TEMPLATE_GLOBAL_FUNCTION_NAME(func, func, moduleName, templateParamSeq)
 #define PY_EXPORT_TEMPLATE_STATIC_FUNCTION(T, func, moduleName, templateParamSeq) PY_EXPORT_TEMPLATE_STATIC_FUNCTION_NAME(T, func, func, moduleName, templateParamSeq)
 #define PY_EXPORT_TEMPLATE_MEMBER_FUNCTION_AS_STATIC_FUNCTION(T, func, instanceReturner, moduleName, templateParamSeq) PY_EXPORT_TEMPLATE_MEMBER_FUNCTION_AS_STATIC_FUNCTION_NAME(T, func, func, instanceReturner, moduleName, templateParamSeq)
+#define PY_EXPORT_TEMPLATE_MEMBER_FUNCTION_AS_STATIC_FUNCTION_LAMBDA(T, func, instanceReturner, moduleName, templateParamSeq) PY_EXPORT_TEMPLATE_MEMBER_FUNCTION_AS_STATIC_FUNCTION_LAMBDA_NAME(T, func, func, instanceReturner, moduleName, templateParamSeq)
 #define PY_EXPORT_TEMPLATE_MEMBER_FUNCTION(T, func, moduleName, templateParamSeq) PY_EXPORT_TEMPLATE_MEMBER_FUNCTION_NAME(T, func, func, moduleName, templateParamSeq)
 
 #define PY_EXPORT_TYPE(T, moduleName, fieldSeq) PY_EXPORT_TYPE_NAME(T, T, moduleName, fieldSeq)
@@ -122,10 +128,11 @@ using xxhash::literals::operator ""_xxh64;
 
 namespace cpp_python_embedder
 {
+// TODO: Field count == 0 or 1
 // TODO: Support user-defined data types as field
 // TODO: Support array as field (python list)
 // TODO: Support operator overloading https://docs.python.org/3/c-api/typeobj.html#number-object-structures tp_as_number
-// TODO: (possibly) Support template https://stackoverflow.com/questions/38843599/function-templates-in-python
+// TODO: Support template operator overloading (maybe?)
 
 // TODO: Remove duplicate codes using constexpr function or macro
 // TODO: Separate files and #include
@@ -213,6 +220,9 @@ enum class [[nodiscard]] EOperatorType
 	
 inline namespace python_embedder_detail
 {
+	using HashValueType = unsigned long long;
+
+	
 	template<typename T, typename = void>
 	struct is_const_ref : std::false_type
 	{};
@@ -299,12 +309,12 @@ inline namespace python_embedder_detail
 
 
 
-	template<typename FunctionPtrType_, FunctionPtrType_ FunctionPtr_, typename TemplateParameters_>
-	struct FunctionPtrTypePair
+	template<typename FunctionPtrType_, FunctionPtrType_ FunctionPtr_, HashValueType TemplateParametersHashValue_>
+	struct TemplateInstanceInfo
 	{
 		using FunctionPtrType = FunctionPtrType_;
 		static constexpr FunctionPtrType functionPtr = FunctionPtr_;
-		using TemplateParameters = TemplateParameters_;
+		static constexpr HashValueType templateParametersHashValue = TemplateParametersHashValue_;
 	};
 
 
@@ -402,9 +412,6 @@ inline namespace python_embedder_detail
 	template<typename T>
 	[[nodiscard]] static constexpr int get_member_type_number();
 
-	template<typename T>
-	[[nodiscard]] static constexpr const char* get_template_parameter_type_name();
-
 	
 
 	template<typename FunctionPtrType, FunctionPtrType FunctionPtr, typename ReturnType, size_t ParameterCount, typename ParameterTypeTuple>
@@ -447,12 +454,12 @@ inline namespace python_embedder_detail
 	};
 
 
-	template<unsigned long long FunctionNameHashValue>
+	template<HashValueType FunctionNameHashValue>
 	struct TemplateFunctionDispatcher
 	{
 		static PyObject* ReplicatedFunction(PyObject* self, PyObject* args);
 
-		inline static std::unordered_map<unsigned long long, PyObject* (*)(PyObject*, PyObject*)> instantiatedFunctions;
+		inline static std::unordered_map<HashValueType, PyObject* (*)(PyObject*, PyObject*)> instantiatedFunctions;
 	};
 }
 
@@ -460,7 +467,7 @@ inline namespace python_embedder_detail
 
 
 	
-template<unsigned long long ModuleNameHashValue>
+template<HashValueType ModuleNameHashValue>
 class Exporter
 {
 public:
@@ -488,8 +495,20 @@ public:
 	static void RegisterMemberOperator(EOperatorType operatorType);
 
 
-	template<unsigned long long FunctionNameHashValue, typename... FunctionPtrTypePairs>
+	template<HashValueType FunctionNameHashValue, typename... TemplateInstanceInfos>
 	static void RegisterTemplateFunction(const char* functionName);
+
+
+	template<HashValueType FunctionNameHashValue, typename InstanceReturnFunctionType, InstanceReturnFunctionType InstanceReturnFunction, typename... TemplateInstanceInfos>
+	static void RegisterTemplateMemberFunctionAsStaticFunction(const char* functionName);
+
+
+	template<HashValueType FunctionNameHashValue, typename InstanceReturnFunctionType, InstanceReturnFunctionType InstanceReturnFunction, typename LambdaPtrType, LambdaPtrType LambdaPtr, typename... TemplateInstanceInfos>
+	static void RegisterTemplateMemberFunctionAsStaticFunctionLambda(const char* functionName);
+
+
+	template<HashValueType FunctionNameHashValue, typename Class, typename... TemplateInstanceInfos>
+	static void RegisterTemplateMemberFunction(const char* functionName);
 
 
 	template<typename T, typename Offsets, typename... FieldTypes>
@@ -1094,7 +1113,7 @@ PyObject* MemberOperatorDispatcher<FunctionPtrType, FunctionPtr, ReturnType, Par
 
 
 	
-template<unsigned long long FunctionNameHashValue>
+template<HashValueType FunctionNameHashValue>
 PyObject* TemplateFunctionDispatcher<FunctionNameHashValue>::ReplicatedFunction(PyObject* self, PyObject* args)
 {
 	const char* templateParameterTypes;
@@ -1102,7 +1121,7 @@ PyObject* TemplateFunctionDispatcher<FunctionNameHashValue>::ReplicatedFunction(
 
 	PyObject* const realArgs = PyTuple_GetSlice(args, 1, PySequence_Length(args));
 
-	const auto funcToCall = instantiatedFunctions.at(xxhash::xxh64(templateParameterTypes, std::strlen(templateParameterTypes) + 1, XXHASH_CX_XXH64_SEED));
+	const auto funcToCall = instantiatedFunctions.at(FunctionNameHashValue ^ xxhash::xxh64(templateParameterTypes, std::strlen(templateParameterTypes), XXHASH_CX_XXH64_SEED));
 	
 	PyObject* const toReturn = funcToCall(self, realArgs);
 	Py_DECREF(realArgs);
@@ -1248,85 +1267,9 @@ constexpr int python_embedder_detail::get_member_type_number()
 	}
 }
 
-	
-
-template <typename T>
-constexpr const char* python_embedder_detail::get_template_parameter_type_name()
-{
-	if constexpr (std::is_same_v<T, bool>)
-	{
-		return "bool";
-	}
-	else if constexpr (std::is_same_v<T, char>)
-	{
-		return "char";
-	}
-	else if constexpr (std::is_same_v<T, unsigned char>)
-	{
-		return "unsigned char";
-	}
-	else if constexpr (std::is_same_v<T, short>)
-	{
-		return "short";
-	}
-	else if constexpr (std::is_same_v<T, unsigned short>)
-	{
-		return "unsigned short";
-	}
-	else if constexpr (std::is_same_v<T, int>)
-	{
-		return "int";
-	}
-	else if constexpr (std::is_same_v<T, unsigned int>)
-	{
-		return "unsigned int";
-	}
-	else if constexpr (std::is_same_v<T, long>)
-	{
-		return "long";
-	}
-	else if constexpr (std::is_same_v<T, unsigned long>)
-	{
-		return "unsigned long";
-	}
-	else if constexpr (std::is_same_v<T, long long>)
-	{
-		return "long long";
-	}
-	else if constexpr (std::is_same_v<T, unsigned long long>)
-	{
-		return "unsigned long long";
-	}
-	else if constexpr (std::is_same_v<T, float>)
-	{
-		return "float";
-	}
-	else if constexpr (std::is_same_v<T, double>)
-	{
-		return "double";
-	}
-	else if constexpr (std::is_same_v<T, long double>)
-	{
-		return "long double";
-	}
-	else if constexpr (std::is_same_v<T, const char*>)
-	{
-		return "const char*";
-	}
-	else if constexpr (std::is_same_v<T, std::string>)
-	{
-		return "string";
-	}
-	else
-	{
-		_ASSERT(false);
-		return nullptr;
-	}
-}
 
 
-
-template <unsigned long long ModuleNameHashValue>
+template <HashValueType ModuleNameHashValue>
 template <typename FunctionPtrType, FunctionPtrType FunctionPtr>
 void Exporter<ModuleNameHashValue>::RegisterFunction(const char* functionName)
 {
@@ -1378,7 +1321,7 @@ void Exporter<ModuleNameHashValue>::RegisterMemberFunctionAsStaticFunction(const
 }
 
 
-template <unsigned long long ModuleNameHashValue>
+template <HashValueType ModuleNameHashValue>
 template <typename FunctionPtrType, FunctionPtrType FunctionPtr, typename InstanceReturnFunctionType, InstanceReturnFunctionType InstanceReturnFunction, typename LambdaPtrType, LambdaPtrType LambdaPtr>
 void Exporter<ModuleNameHashValue>::RegisterMemberFunctionAsStaticFunctionLambda(const char* functionName)
 {
@@ -1409,7 +1352,7 @@ void Exporter<ModuleNameHashValue>::RegisterMemberFunctionAsStaticFunctionLambda
 }
 
 
-template <unsigned long long ModuleNameHashValue>
+template <HashValueType ModuleNameHashValue>
 template <typename FunctionPtrType, FunctionPtrType FunctionPtr, typename Class>
 void Exporter<ModuleNameHashValue>::RegisterMemberFunction(const char* functionName)
 {
@@ -1442,7 +1385,7 @@ void Exporter<ModuleNameHashValue>::RegisterMemberFunction(const char* functionN
 }
 
 
-template <unsigned long long ModuleNameHashValue>
+template <HashValueType ModuleNameHashValue>
 template <typename FunctionPtrType, FunctionPtrType FunctionPtr>
 void Exporter<ModuleNameHashValue>::RegisterGlobalOperator(EOperatorType operatorType)
 {
@@ -1451,7 +1394,7 @@ void Exporter<ModuleNameHashValue>::RegisterGlobalOperator(EOperatorType operato
 
 
 
-template <unsigned long long ModuleNameHashValue>
+template <HashValueType ModuleNameHashValue>
 template <typename FunctionPtrType, FunctionPtrType FunctionPtr, typename Class>
 void Exporter<ModuleNameHashValue>::RegisterMemberOperator(const EOperatorType operatorType)
 {
@@ -1597,26 +1540,24 @@ void Exporter<ModuleNameHashValue>::RegisterMemberOperator(const EOperatorType o
 
 
 	
-template <unsigned long long ModuleNameHashValue>
-template <unsigned long long FunctionNameHashValue, typename... FunctionPtrTypePairs>
+template <HashValueType ModuleNameHashValue>
+template <HashValueType FunctionNameHashValue, typename... TemplateInstanceInfos>
 void Exporter<ModuleNameHashValue>::RegisterTemplateFunction(const char* functionName)
 {
 	using namespace boost::function_types;
 	
-	using Pairs = TypeList<FunctionPtrTypePairs...>;
+	using Pairs = TypeList<TemplateInstanceInfos...>;
 	constexpr size_t pairCount = std::tuple_size_v<Pairs>;
 
-	using InstantiatedDispatcher = TemplateFunctionDispatcher<FunctionNameHashValue>;
-	auto& functionMap = InstantiatedDispatcher::instantiatedFunctions;
+	using FunctionMapper = TemplateFunctionDispatcher<FunctionNameHashValue>;
+	auto& functionMap = FunctionMapper::instantiatedFunctions;
 
 	boost::mp11::mp_for_each<boost::mp11::mp_iota_c<pairCount>>([&](auto i)
 		{
-			std::string functionSignatureString;
-		
 			using Pair = std::tuple_element_t<i, Pairs>;
 			using FunctionPtrType = typename Pair::FunctionPtrType;
 			constexpr FunctionPtrType functionPtr = Pair::functionPtr;
-			using TemplateParameters = typename Pair::TemplateParameters;
+			constexpr HashValueType templateParametersHashValue = Pair::templateParametersHashValue;
 
 			static_assert(is_function_pointer<FunctionPtrType>::value);
 			static_assert(!is_member_function_pointer<FunctionPtrType>::value);
@@ -1629,40 +1570,162 @@ void Exporter<ModuleNameHashValue>::RegisterTemplateFunction(const char* functio
 			static_assert(is_supported_return_type_v<ReturnType>);
 		
 			using InstantiatedDispatcher = FunctionDispatcher<FunctionPtrType, functionPtr, ReturnType, parameterCount, ParameterTypeTuple>;
-
-			boost::mp11::mp_for_each<boost::mp11::mp_iota_c<std::tuple_size_v<TemplateParameters>>>([&](auto j)
-				{
-					using TemplateParameter = std::tuple_element_t<j, TemplateParameters>;
-
-					if constexpr (std::is_fundamental_v<TemplateParameter> || std::is_same_v<TemplateParameter, const char*>)
-					{
-						functionSignatureString += get_template_parameter_type_name<TemplateParameter>();
-					}
-					else
-					{
-						functionSignatureString += PyExportedClass<TemplateParameter>::typeInfo.tp_name;
-					}
-					functionSignatureString += ", ";
-				}
-			);
 		
-			// Removing trailing ", "
-			functionSignatureString.pop_back();
-			functionSignatureString.pop_back();
+			functionMap[FunctionNameHashValue ^ templateParametersHashValue] = &InstantiatedDispatcher::ReplicatedFunction;
+		}
+	);
+	
+	methods.push_back(PyMethodDef{ functionName, &FunctionMapper::ReplicatedFunction, METH_VARARGS, nullptr });
+}
+
+
+	
+template <HashValueType ModuleNameHashValue>
+template <HashValueType FunctionNameHashValue, typename InstanceReturnFunctionType, InstanceReturnFunctionType InstanceReturnFunction, typename ... TemplateInstanceInfos>
+void Exporter<ModuleNameHashValue>::RegisterTemplateMemberFunctionAsStaticFunction(const char* functionName)
+{
+	using namespace boost::function_types;
+
+	using Pairs = TypeList<TemplateInstanceInfos...>;
+	constexpr size_t pairCount = std::tuple_size_v<Pairs>;
+
+	using FunctionMapper = TemplateFunctionDispatcher<FunctionNameHashValue>;
+	auto& functionMap = FunctionMapper::instantiatedFunctions;
+
+	boost::mp11::mp_for_each<boost::mp11::mp_iota_c<pairCount>>([&](auto i)
+		{
+			using Pair = std::tuple_element_t<i, Pairs>;
+			using FunctionPtrType = typename Pair::FunctionPtrType;
+			constexpr FunctionPtrType functionPtr = Pair::functionPtr;
+			constexpr HashValueType templateParametersHashValue = Pair::templateParametersHashValue;
+
+			static_assert(is_member_function_pointer<FunctionPtrType>::value);
+
+			constexpr size_t parameterCount = function_arity<FunctionPtrType>::value;
+			using ReturnType = typename result_type<FunctionPtrType>::type;
+			using ParameterTypes = parameter_types<FunctionPtrType>;
+			using ParameterTypeTuple = TailsParameterTuple<ParameterTypes, parameterCount>;
+			static_assert(ValidityChecker<is_supported_parameter_type, ParameterTypeTuple, parameterCount - 1>::value);
+			static_assert(is_supported_return_type_v<ReturnType>);
+
+			constexpr size_t instanceReturnerParameterCount = function_arity<InstanceReturnFunctionType>::value;
+			using InstanceReturnerReturnType = typename result_type<InstanceReturnFunctionType>::type;
+			using InstanceReturnerParameterTypes = parameter_types<InstanceReturnFunctionType>;
+			using InstanceReturnerParameterTypeTuple = ParameterTuple<InstanceReturnerParameterTypes, instanceReturnerParameterCount>;
+			static_assert(ValidityChecker<is_supported_parameter_type, InstanceReturnerParameterTypeTuple, instanceReturnerParameterCount>::value);
+			static_assert(std::is_same_v<InstanceReturnerReturnType, remove_const_ref_t<typename boost::mpl::at_c<ParameterTypes, 0>::type>*>);
 		
-			functionMap[xxhash::xxh64(functionSignatureString.c_str(), functionSignatureString.size() + 1, XXHASH_CX_XXH64_SEED)] = &InstantiatedDispatcher::ReplicatedFunction;
+			using InstantiatedDispatcher = MemberFunctionAsStaticFunctionDispatcher<FunctionPtrType, functionPtr, ReturnType, parameterCount, ParameterTypeTuple,
+				InstanceReturnFunctionType, InstanceReturnFunction, InstanceReturnerReturnType, instanceReturnerParameterCount, InstanceReturnerParameterTypeTuple>;
+
+			functionMap[FunctionNameHashValue ^ templateParametersHashValue] = &InstantiatedDispatcher::ReplicatedFunction;
 		}
 	);
 
-	// TODO: How to distinguish different functions with same template parameter list of static / member?
-	// maybe concat the function name at the front
-	
-	methods.push_back(PyMethodDef{ functionName, &InstantiatedDispatcher::ReplicatedFunction, METH_VARARGS, nullptr });
+	methods.push_back(PyMethodDef{ functionName, &FunctionMapper::ReplicatedFunction, METH_VARARGS, nullptr });
+}
+
+
+template <HashValueType ModuleNameHashValue>
+template <HashValueType FunctionNameHashValue, typename InstanceReturnFunctionType, InstanceReturnFunctionType InstanceReturnFunction, typename LambdaPtrType, LambdaPtrType LambdaPtr, typename... TemplateInstanceInfos>
+void Exporter<ModuleNameHashValue>::RegisterTemplateMemberFunctionAsStaticFunctionLambda(const char* functionName)
+{
+	using namespace boost::function_types;
+
+	using Pairs = TypeList<TemplateInstanceInfos...>;
+	constexpr size_t pairCount = std::tuple_size_v<Pairs>;
+
+	using FunctionMapper = TemplateFunctionDispatcher<FunctionNameHashValue>;
+	auto& functionMap = FunctionMapper::instantiatedFunctions;
+
+	boost::mp11::mp_for_each<boost::mp11::mp_iota_c<pairCount>>([&](auto i)
+		{
+			using Pair = std::tuple_element_t<i, Pairs>;
+			using FunctionPtrType = typename Pair::FunctionPtrType;
+			constexpr FunctionPtrType functionPtr = Pair::functionPtr;
+			constexpr HashValueType templateParametersHashValue = Pair::templateParametersHashValue;
+
+			static_assert(is_member_function_pointer<FunctionPtrType>::value);
+
+			constexpr size_t parameterCount = function_arity<FunctionPtrType>::value;
+			using ReturnType = typename result_type<FunctionPtrType>::type;
+			using ParameterTypes = parameter_types<FunctionPtrType>;
+			using ParameterTypeTuple = TailsParameterTuple<ParameterTypes, parameterCount>;
+			static_assert(ValidityChecker<is_supported_parameter_type, ParameterTypeTuple, parameterCount - 1>::value);
+			static_assert(is_supported_return_type_v<ReturnType>);
+
+			constexpr size_t instanceReturnerParameterCount = function_arity<InstanceReturnFunctionType>::value;
+			using InstanceReturnerReturnType = typename result_type<InstanceReturnFunctionType>::type;
+			using InstanceReturnerParameterTypes = parameter_types<InstanceReturnFunctionType>;
+			using InstanceReturnerParameterTypeTuple = TailsParameterTuple<InstanceReturnerParameterTypes, instanceReturnerParameterCount>;
+			static_assert(ValidityChecker<is_supported_parameter_type, InstanceReturnerParameterTypeTuple, instanceReturnerParameterCount - 1>::value);
+			static_assert(std::is_same_v<InstanceReturnerReturnType, remove_const_ref_t<typename boost::mpl::at_c<ParameterTypes, 0>::type>*>);
+
+			using InstantiatedDispatcher = MemberFunctionAsStaticFunctionLambdaDispatcher<FunctionPtrType, functionPtr, ReturnType, parameterCount, ParameterTypeTuple,
+				InstanceReturnFunctionType, InstanceReturnFunction, InstanceReturnerReturnType, instanceReturnerParameterCount, InstanceReturnerParameterTypeTuple,
+				LambdaPtrType, LambdaPtr
+			>;
+
+			functionMap[FunctionNameHashValue ^ templateParametersHashValue] = &InstantiatedDispatcher::ReplicatedFunction;
+		}
+	);
+
+	methods.push_back(PyMethodDef{ functionName, &FunctionMapper::ReplicatedFunction, METH_VARARGS, nullptr });
+}
+
+
+template <HashValueType ModuleNameHashValue>
+template <HashValueType FunctionNameHashValue, typename Class, typename... TemplateInstanceInfos>
+void Exporter<ModuleNameHashValue>::RegisterTemplateMemberFunction(const char* functionName)
+{
+	using namespace boost::function_types;
+
+	using Pairs = TypeList<TemplateInstanceInfos...>;
+	constexpr size_t pairCount = std::tuple_size_v<Pairs>;
+
+	using FunctionMapper = TemplateFunctionDispatcher<FunctionNameHashValue>;
+	auto& functionMap = FunctionMapper::instantiatedFunctions;
+
+	boost::mp11::mp_for_each<boost::mp11::mp_iota_c<pairCount>>([&](auto i)
+		{
+			using Pair = std::tuple_element_t<i, Pairs>;
+			using FunctionPtrType = typename Pair::FunctionPtrType;
+			constexpr FunctionPtrType functionPtr = Pair::functionPtr;
+			constexpr HashValueType templateParametersHashValue = Pair::templateParametersHashValue;
+
+			static_assert(is_member_function_pointer<FunctionPtrType>::value);
+			static_assert(is_supported_custom_type_v<Class>);
+
+			constexpr size_t parameterCount = function_arity<FunctionPtrType>::value;
+			using ReturnType = typename result_type<FunctionPtrType>::type;
+			using ParameterTypes = parameter_types<FunctionPtrType>;
+			using ParameterTypeTuple = TailsParameterTuple<ParameterTypes, parameterCount>;
+			static_assert(ValidityChecker<is_supported_parameter_type, ParameterTypeTuple, parameterCount - 1>::value);
+			static_assert(is_supported_return_type_v<ReturnType>);
+
+			using InstantiatedDispatcher = MemberFunctionDispatcher<FunctionPtrType, functionPtr, ReturnType, parameterCount, ParameterTypeTuple, Class>;
+
+			functionMap[FunctionNameHashValue ^ templateParametersHashValue] = &InstantiatedDispatcher::ReplicatedFunction;
+		}
+	);
+
+	if (!PyExportedClass<Class>::methods.empty() && PyExportedClass<Class>::methods.back().ml_name == nullptr)
+	{
+		throw std::runtime_error("All member functions must be exported first before its type");
+	}
+
+	PyExportedClass<Class>::methods.push_back(PyMethodDef{
+		functionName,
+		&FunctionMapper::ReplicatedFunction,
+		METH_VARARGS,
+		nullptr
+		}
+	);
 }
 
 
 
-template <unsigned long long ModuleNameHashValue>
+template <HashValueType ModuleNameHashValue>
 template <typename T, typename Offsets, typename... FieldTypes>
 void Exporter<ModuleNameHashValue>::RegisterType(const char* typeName, std::initializer_list<PyMemberDef> members)
 {
@@ -1692,7 +1755,7 @@ void Exporter<ModuleNameHashValue>::RegisterType(const char* typeName, std::init
 
 
 	
-template <unsigned long long ModuleNameHashValue>
+template <HashValueType ModuleNameHashValue>
 void Exporter<ModuleNameHashValue>::Export(const std::string& moduleName_)
 {
 	moduleName = moduleName_;
@@ -1702,7 +1765,7 @@ void Exporter<ModuleNameHashValue>::Export(const std::string& moduleName_)
 
 
 
-template <unsigned long long ModuleNameHashValue>
+template <HashValueType ModuleNameHashValue>
 PyObject* Exporter<ModuleNameHashValue>::Init()
 {
 	static bool hasInitialized = false;

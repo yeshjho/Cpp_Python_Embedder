@@ -92,8 +92,31 @@ public:
 		std::cout << i << " " << __FUNCSIG__ << std::endl;
 	}
 
+	template<typename T>
+	float g()
+	{
+		std::cout << __FUNCSIG__ << std::endl;
+
+		return 123.456f;
+	}
+
+	template<typename T>
+	void h()
+	{
+		std::cout << __FUNCSIG__ << std::endl;
+	}
+
+	int i;
+	int j;
+
 	T& operator+=(int i);
 };
+
+T* t_returner()
+{
+	static T t;
+	return &t;
+}
 
 
 int main()
@@ -129,10 +152,15 @@ int main()
 	PY_EXPORT_TYPE_NAME(glm::vec3, vec3, test, (x)(y)(z));
 
 	PY_EXPORT_GLOBAL_FUNCTION_NAME((glm::dot<3, float, glm::defaultp>), dot, test);
-
+	
 	PY_EXPORT_TEMPLATE_STATIC_FUNCTION_NAME(T, f, qwer, test, ((int, float, double))((std::string, long, char))((unsigned char, long long, short)));
+	// PY_EXPORT_TEMPLATE_MEMBER_FUNCTION_AS_STATIC_FUNCTION(T, g, t_returner, test, ((glm::vec3))((long double)));
+	PY_EXPORT_TEMPLATE_MEMBER_FUNCTION_AS_STATIC_FUNCTION_LAMBDA(T, g, []() { static T t; return &t; }, test, ((glm::vec3))((long double)));
 
+	PY_EXPORT_TEMPLATE_MEMBER_FUNCTION(T, h, test, ((int))((float)));
 
+	PY_EXPORT_TYPE(T, test, (i)(j));
+	
 	PY_EXPORT_GLOBAL_FUNCTION(f, test);
 	PY_EXPORT_GLOBAL_FUNCTION(h, test);
 	PY_EXPORT_GLOBAL_FUNCTION(i, test);

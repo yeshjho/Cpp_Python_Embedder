@@ -18,4 +18,8 @@ h(dot(result, v))
 #f(result)
 
 
-qwer("int, float, double", 999)
+qwer("unsigned char, long long, short", 999)
+h( g(("glm::vec3"), ()) )
+
+t = T(1, 2)
+t.h(("float"))
