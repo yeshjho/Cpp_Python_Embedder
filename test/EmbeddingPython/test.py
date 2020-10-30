@@ -22,7 +22,9 @@ f(v2)
 f(-v2)
 f(v2)
 
-f(v2.increment(2))
+#f(v2.increment(2))
+f(increment((), 2))
+f(increment((), 2))
 #f(result)
 
 

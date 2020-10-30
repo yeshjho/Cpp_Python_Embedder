@@ -416,6 +416,123 @@ inline namespace python_embedder_detail
 	template<typename T>
 	[[nodiscard]] static constexpr int get_member_type_number();
 
+
+	template<size_t ArgumentCount, typename ParameterTypeTuple>
+	constexpr bool parse_arguments(PyObject* args, ParameterTypeTuple& parsedArguments)
+	{
+		bool parseResult = true;
+		boost::mp11::mp_for_each<boost::mp11::mp_iota_c<ArgumentCount>>([&](auto i)
+			{
+				using NthParameterType = std::tuple_element_t<i, ParameterTypeTuple>;
+
+				PyObject* const pyObjectValue = PyTuple_GetItem(args, i);
+				TempVarType<NthParameterType> value;
+
+				if constexpr (std::is_fundamental_v<NthParameterType> || std::is_same_v<NthParameterType, const char*>)
+				{
+					const char* format = get_argument_type_format_string<NthParameterType>();
+
+					if (!PyArg_Parse(pyObjectValue, format, &value))
+					{
+						parseResult = false;
+						return;
+					}
+				}
+				else if constexpr (std::is_same_v<NthParameterType, std::string>)
+				{
+					const char* temp;
+					if (!PyArg_Parse(pyObjectValue, "s", &temp))
+					{
+						parseResult = false;
+						return;
+					}
+
+					value = temp;
+				}
+				else
+				{
+					if (!PyArg_Parse(pyObjectValue, "O&", &Converter<NthParameterType>::ParseValue, &value))
+					{
+						parseResult = false;
+						return;
+					}
+				}
+
+				std::get<i>(parsedArguments) = std::move(static_cast<NthParameterType>(value));
+			}
+		);
+
+		return parseResult;
+	}
+
+	
+	template<typename FunctionPtrType, FunctionPtrType FunctionPtr, typename ReturnType, typename ParameterTypeTuple>
+	PyObject* get_return_value(const ParameterTypeTuple& arguments)
+	{
+		if constexpr (std::is_same_v<ReturnType, void>)
+		{
+			std::apply(FunctionPtr, arguments);
+
+			return Py_None;
+		}
+		else
+		{
+			ReturnType returnValue = std::apply(FunctionPtr, arguments);
+
+			if constexpr (std::is_fundamental_v<ReturnType> || std::is_same_v<ReturnType, const char*>)
+			{
+				const char* format = get_argument_type_format_string<ReturnType>();
+
+				return Py_BuildValue(format, returnValue);
+			}
+			else if constexpr (std::is_same_v<ReturnType, std::string>)
+			{
+				return Py_BuildValue("s", returnValue.c_str());
+			}
+			else
+			{
+				return Py_BuildValue("O&", &Converter<ReturnType>::BuildValue, returnValue);
+			}
+		}
+	}
+
+
+	template<typename FunctionPtrType, FunctionPtrType FunctionPtr, typename ReturnType, typename ClassReferenceType, typename ParameterTypeTuple, typename InstanceType>
+	PyObject* get_return_value_ref_possible(const ParameterTypeTuple& arguments, const InstanceType& instance, PyObject* self = nullptr)
+	{
+		if constexpr (std::is_same_v<ReturnType, void>)
+		{
+			std::apply(FunctionPtr, arguments);
+
+			return Py_None;
+		}
+		else if constexpr (std::is_same_v<ReturnType, ClassReferenceType>)
+		{
+			std::apply(FunctionPtr, arguments);
+
+			return self ? self : Py_BuildValue("O&", &Converter<std::remove_reference_t<ReturnType>>::BuildValue, instance);
+		}
+		else
+		{
+			ReturnType returnValue = std::apply(FunctionPtr, arguments);
+
+			if constexpr (std::is_fundamental_v<ReturnType> || std::is_same_v<ReturnType, const char*>)
+			{
+				const char* format = get_argument_type_format_string<ReturnType>();
+
+				return Py_BuildValue(format, returnValue);
+			}
+			else if constexpr (std::is_same_v<ReturnType, std::string>)
+			{
+				return Py_BuildValue("s", returnValue.c_str());
+			}
+			else
+			{
+				return Py_BuildValue("O&", &Converter<ReturnType>::BuildValue, returnValue);
+			}
+		}
+	}
+
 	
 
 	template<typename FunctionPtrType, FunctionPtrType FunctionPtr, typename ReturnType, size_t ParameterCount, typename ParameterTypeTuple>
@@ -453,7 +570,7 @@ inline namespace python_embedder_detail
 	template<typename FunctionPtrType, FunctionPtrType FunctionPtr, typename ReturnType, size_t ParameterCount, typename ParameterTypeTuple, typename Class, EOperatorType Operator>
 	struct MemberOperatorDispatcher
 	{
-		static PyObject* BinaryReplicatedFunction(PyObject* self, PyObject* args);
+		static PyObject* BinaryReplicatedFunction(PyObject* self, PyObject* arg);
 		static PyObject* UnaryReplicatedFunction(PyObject* self);
 	};
 
@@ -630,80 +747,13 @@ PyObject* FunctionDispatcher<FunctionPtrType, FunctionPtr, ReturnType, Parameter
 {
 	ParameterTypeTuple arguments;
 	
-	bool parseResult = true;
-	boost::mp11::mp_for_each<boost::mp11::mp_iota_c<ParameterCount>>([&](auto i)
-		{
-			using NthParameterType = std::tuple_element_t<i, ParameterTypeTuple>;
-
-			PyObject* const pyObjectValue = PyTuple_GetItem(args, i);
-			TempVarType<NthParameterType> value;
-
-			if constexpr (std::is_fundamental_v<NthParameterType> || std::is_same_v<NthParameterType, const char*>)
-			{
-				const char* format = get_argument_type_format_string<NthParameterType>();
-
-				if (!PyArg_Parse(pyObjectValue, format, &value))
-				{
-					parseResult = false;
-					return;
-				}
-			}
-			else if constexpr (std::is_same_v<NthParameterType, std::string>)
-			{
-				const char* temp;
-				if (!PyArg_Parse(pyObjectValue, "s", &temp))
-				{
-					parseResult = false;
-					return;
-				}
-
-				value = temp;
-			}
-			else
-			{
-				if (!PyArg_Parse(pyObjectValue, "O&", &Converter<NthParameterType>::ParseValue, &value))
-				{
-					parseResult = false;
-					return;
-				}
-			}
-
-			std::get<i>(arguments) = std::move(static_cast<NthParameterType>(value));
-		}
-	);
-
-	if (!parseResult)
+	if (!parse_arguments<ParameterCount>(args, arguments))
 	{
 		return nullptr;
 	}
 
-	PyObject* toReturn;
-	if constexpr (std::is_same_v<ReturnType, void>)
-	{
-		std::apply(FunctionPtr, arguments);
-
-		toReturn = Py_None;
-	}
-	else
-	{
-		ReturnType returnValue = std::apply(FunctionPtr, arguments);
-
-		if constexpr (std::is_fundamental_v<ReturnType> || std::is_same_v<ReturnType, const char*>)
-		{
-			const char* format = get_argument_type_format_string<ReturnType>();
-
-			toReturn = Py_BuildValue(format, returnValue);
-		}
-		else if constexpr (std::is_same_v<ReturnType, std::string>)
-		{
-			toReturn = Py_BuildValue("s", returnValue.c_str());
-		}
-		else
-		{
-			toReturn = Py_BuildValue("O&", &Converter<ReturnType>::BuildValue, returnValue);
-		}
-	}
-
+	
+	PyObject* toReturn = get_return_value<FunctionPtrType, FunctionPtr, ReturnType>(arguments);
 	Py_INCREF(toReturn);
 	return toReturn;
 }
@@ -717,144 +767,29 @@ PyObject* MemberFunctionAsStaticFunctionDispatcher<FunctionPtrType, FunctionPtr,
 
 	PyObject* const instanceReturnFunctionArgs = PyTuple_GetItem(args, 0);
 	
-	bool parseResult = true;
-	boost::mp11::mp_for_each<boost::mp11::mp_iota_c<InstanceReturnFunctionParameterCount>>([&](auto i)
-		{
-			using NthParameterType = std::tuple_element_t<i, InstanceReturnFunctionParameterTypeTuple>;
-
-			PyObject* const pyObjectValue = PyTuple_GetItem(instanceReturnFunctionArgs, i);
-			TempVarType<NthParameterType> value;
-
-			if constexpr (std::is_fundamental_v<NthParameterType> || std::is_same_v<NthParameterType, const char*>)
-			{
-				const char* format = get_argument_type_format_string<NthParameterType>();
-
-				if (!PyArg_Parse(pyObjectValue, format, &value))
-				{
-					parseResult = false;
-					return;
-				}
-			}
-			else if constexpr (std::is_same_v<NthParameterType, std::string>)
-			{
-				const char* temp;
-				if (!PyArg_Parse(pyObjectValue, "s", &temp))
-				{
-					parseResult = false;
-					return;
-				}
-
-				value = temp;
-			}
-			else
-			{
-				if (!PyArg_Parse(pyObjectValue, "O&", &Converter<NthParameterType>::ParseValue, &value))
-				{
-					parseResult = false;
-					return;
-				}
-			}
-
-			std::get<i>(instanceReturnerArguments) = std::move(static_cast<NthParameterType>(value));
-		}
-	);
-	
-	if (!parseResult)
+	if (!parse_arguments<InstanceReturnFunctionParameterCount>(instanceReturnFunctionArgs, instanceReturnerArguments))
 	{
 		return nullptr;
 	}
-	
 	
 
 	ParameterTypeTuple arguments;
 
 	PyObject* const realArgs = PyTuple_GetSlice(args, 1, ParameterCount);
 
-	parseResult = true;
-	boost::mp11::mp_for_each<boost::mp11::mp_iota_c<ParameterCount - 1>>([&](auto i)
-		{
-			using NthParameterType = std::tuple_element_t<i, ParameterTypeTuple>;
-
-			PyObject* const pyObjectValue = PyTuple_GetItem(realArgs, i);
-			TempVarType<NthParameterType> value;
-
-			if constexpr (std::is_fundamental_v<NthParameterType> || std::is_same_v<NthParameterType, const char*>)
-			{
-				const char* format = get_argument_type_format_string<NthParameterType>();
-
-				if (!PyArg_Parse(pyObjectValue, format, &value))
-				{
-					parseResult = false;
-					return;
-				}
-			}
-			else if constexpr (std::is_same_v<NthParameterType, std::string>)
-			{
-				const char* temp;
-				if (!PyArg_Parse(pyObjectValue, "s", &temp))
-				{
-					parseResult = false;
-					return;
-				}
-
-				value = temp;
-			}
-			else
-			{
-				if (!PyArg_Parse(pyObjectValue, "O&", &Converter<NthParameterType>::ParseValue, &value))
-				{
-					parseResult = false;
-					return;
-				}
-			}
-
-			std::get<i>(arguments) = std::move(static_cast<NthParameterType>(value));
-		}
-	);
-
-	Py_DECREF(realArgs);
-
-	if (!parseResult)
+	if (!parse_arguments<ParameterCount - 1>(realArgs, arguments))
 	{
+		Py_DECREF(realArgs);
 		return nullptr;
 	}
+	Py_DECREF(realArgs);
 
 	
 	InstanceReturnFunctionReturnType instance = std::apply(InstanceReturnFunction, instanceReturnerArguments);
 	auto thisPtrAddedArguments = std::tuple_cat(std::make_tuple(instance), arguments);
 
-	PyObject* toReturn;
-	if constexpr (std::is_same_v<ReturnType, void>)
-	{
-		std::apply(FunctionPtr, thisPtrAddedArguments);
-
-		toReturn = Py_None;
-	}
-	else if constexpr (std::is_same_v<ReturnType, std::remove_pointer_t<InstanceReturnFunctionReturnType>&>)
-	{
-		std::apply(FunctionPtr, thisPtrAddedArguments);
-
-		toReturn = Py_BuildValue("O&", &Converter<std::remove_reference_t<ReturnType>>::BuildValue, instance);
-	}
-	else
-	{
-		ReturnType returnValue = std::apply(FunctionPtr, thisPtrAddedArguments);
-
-		if constexpr (std::is_fundamental_v<ReturnType> || std::is_same_v<ReturnType, const char*>)
-		{
-			const char* format = get_argument_type_format_string<ReturnType>();
-
-			toReturn = Py_BuildValue(format, returnValue);
-		}
-		else if constexpr (std::is_same_v<ReturnType, std::string>)
-		{
-			toReturn = Py_BuildValue("s", returnValue.c_str());
-		}
-		else
-		{
-			toReturn = Py_BuildValue("O&", &Converter<ReturnType>::BuildValue, returnValue);
-		}
-	}
+	PyObject* toReturn = get_return_value_ref_possible<FunctionPtrType, FunctionPtr, ReturnType, std::remove_pointer_t<InstanceReturnFunctionReturnType>&>
+		(thisPtrAddedArguments, instance);
 
 	Py_INCREF(toReturn);
 	return toReturn;
@@ -870,146 +805,31 @@ PyObject* MemberFunctionAsStaticFunctionLambdaDispatcher<FunctionPtrType, Functi
 
 	PyObject* const instanceReturnFunctionArgs = PyTuple_GetItem(args, 0);
 
-	bool parseResult = true;
-	boost::mp11::mp_for_each<boost::mp11::mp_iota_c<InstanceReturnFunctionParameterCount - 1>>([&](auto i)
-		{
-			using NthParameterType = std::tuple_element_t<i, InstanceReturnFunctionParameterTypeTuple>;
-
-			PyObject* const pyObjectValue = PyTuple_GetItem(instanceReturnFunctionArgs, i);
-			TempVarType<NthParameterType> value;
-
-			if constexpr (std::is_fundamental_v<NthParameterType> || std::is_same_v<NthParameterType, const char*>)
-			{
-				const char* format = get_argument_type_format_string<NthParameterType>();
-
-				if (!PyArg_Parse(pyObjectValue, format, &value))
-				{
-					parseResult = false;
-					return;
-				}
-			}
-			else if constexpr (std::is_same_v<NthParameterType, std::string>)
-			{
-				const char* temp;
-				if (!PyArg_Parse(pyObjectValue, "s", &temp))
-				{
-					parseResult = false;
-					return;
-				}
-
-				value = temp;
-			}
-			else
-			{
-				if (!PyArg_Parse(pyObjectValue, "O&", &Converter<NthParameterType>::ParseValue, &value))
-				{
-					parseResult = false;
-					return;
-				}
-			}
-
-			std::get<i>(instanceReturnerArguments) = std::move(static_cast<NthParameterType>(value));
-		}
-	);
-
-	if (!parseResult)
+	if (!parse_arguments<InstanceReturnFunctionParameterCount - 1>(instanceReturnFunctionArgs, instanceReturnerArguments))
 	{
 		return nullptr;
 	}
-
 
 
 	ParameterTypeTuple arguments;
 
 	PyObject* const realArgs = PyTuple_GetSlice(args, 1, ParameterCount);
 
-	parseResult = true;
-	boost::mp11::mp_for_each<boost::mp11::mp_iota_c<ParameterCount - 1>>([&](auto i)
-		{
-			using NthParameterType = std::tuple_element_t<i, ParameterTypeTuple>;
-
-			PyObject* const pyObjectValue = PyTuple_GetItem(realArgs, i);
-			TempVarType<NthParameterType> value;
-
-			if constexpr (std::is_fundamental_v<NthParameterType> || std::is_same_v<NthParameterType, const char*>)
-			{
-				const char* format = get_argument_type_format_string<NthParameterType>();
-
-				if (!PyArg_Parse(pyObjectValue, format, &value))
-				{
-					parseResult = false;
-					return;
-				}
-			}
-			else if constexpr (std::is_same_v<NthParameterType, std::string>)
-			{
-				const char* temp;
-				if (!PyArg_Parse(pyObjectValue, "s", &temp))
-				{
-					parseResult = false;
-					return;
-				}
-
-				value = temp;
-			}
-			else
-			{
-				if (!PyArg_Parse(pyObjectValue, "O&", &Converter<NthParameterType>::ParseValue, &value))
-				{
-					parseResult = false;
-					return;
-				}
-			}
-
-			std::get<i>(arguments) = std::move(static_cast<NthParameterType>(value));
-		}
-	);
-
-	Py_DECREF(realArgs);
-
-	if (!parseResult)
+	if (!parse_arguments<ParameterCount - 1>(realArgs, arguments))
 	{
+		Py_DECREF(realArgs);
 		return nullptr;
 	}
+	Py_DECREF(realArgs);
 
-
+	
 	auto thisPtrAddedInstanceReturnerArguments = std::tuple_cat(std::make_tuple(LambdaPtr), instanceReturnerArguments);
 	InstanceReturnFunctionReturnType instance = std::apply(InstanceReturnFunction, thisPtrAddedInstanceReturnerArguments);
 	
 	auto thisPtrAddedArguments = std::tuple_cat(std::make_tuple(instance), arguments);
 
-	PyObject* toReturn;
-	if constexpr (std::is_same_v<ReturnType, void>)
-	{
-		std::apply(FunctionPtr, thisPtrAddedArguments);
-
-		toReturn = Py_None;
-	}
-	else if constexpr (std::is_same_v<ReturnType, std::remove_pointer_t<InstanceReturnFunctionReturnType>&>)
-	{
-		std::apply(FunctionPtr, thisPtrAddedArguments);
-		
-		toReturn = Py_BuildValue("O&", &Converter<std::remove_reference_t<ReturnType>>::BuildValue, instance);
-	}
-	else
-	{
-		ReturnType returnValue = std::apply(FunctionPtr, thisPtrAddedArguments);
-
-		if constexpr (std::is_fundamental_v<ReturnType> || std::is_same_v<ReturnType, const char*>)
-		{
-			const char* format = get_argument_type_format_string<ReturnType>();
-
-			toReturn = Py_BuildValue(format, returnValue);
-		}
-		else if constexpr (std::is_same_v<ReturnType, std::string>)
-		{
-			toReturn = Py_BuildValue("s", returnValue.c_str());
-		}
-		else
-		{
-			toReturn = Py_BuildValue("O&", &Converter<ReturnType>::BuildValue, returnValue);
-		}
-	}
+	PyObject* toReturn = get_return_value_ref_possible<FunctionPtrType, FunctionPtr, ReturnType, std::remove_pointer_t<InstanceReturnFunctionReturnType>&>
+		(thisPtrAddedArguments, instance);
 
 	Py_INCREF(toReturn);
 	return toReturn;
@@ -1023,90 +843,18 @@ PyObject* MemberFunctionDispatcher<FunctionPtrType, FunctionPtr, ReturnType, Par
 {
 	ParameterTypeTuple arguments;
 
-	bool parseResult = true;
-	boost::mp11::mp_for_each<boost::mp11::mp_iota_c<ParameterCount - 1>>([&](auto i)
-		{
-			using NthParameterType = std::tuple_element_t<i, ParameterTypeTuple>;
-
-			PyObject* const pyObjectValue = PyTuple_GetItem(args, i);
-			TempVarType<NthParameterType> value;
-
-			if constexpr (std::is_fundamental_v<NthParameterType> || std::is_same_v<NthParameterType, const char*>)
-			{
-				const char* format = get_argument_type_format_string<NthParameterType>();
-
-				if (!PyArg_Parse(pyObjectValue, format, &value))
-				{
-					parseResult = false;
-					return;
-				}
-			}
-			else if constexpr (std::is_same_v<NthParameterType, std::string>)
-			{
-				const char* temp;
-				if (!PyArg_Parse(pyObjectValue, "s", &temp))
-				{
-					parseResult = false;
-					return;
-				}
-
-				value = temp;
-			}
-			else
-			{
-				if (!PyArg_Parse(pyObjectValue, "O&", &Converter<NthParameterType>::ParseValue, &value))
-				{
-					parseResult = false;
-					return;
-				}
-			}
-
-			std::get<i>(arguments) = std::move(static_cast<NthParameterType>(value));
-		}
-	);
-
-	if (!parseResult)
+	if (!parse_arguments<ParameterCount - 1>(args, arguments))
 	{
 		return nullptr;
 	}
 
+	
 	Class instance;
 	Converter<Class>::ParseValue(self, &instance);
 
 	auto thisPtrAddedArguments = std::tuple_cat(std::make_tuple(&instance), arguments);
 
-	PyObject* toReturn;
-	if constexpr (std::is_same_v<ReturnType, void>)
-	{
-		std::apply(FunctionPtr, thisPtrAddedArguments);
-
-		toReturn = Py_None;
-	}
-	else if constexpr (std::is_same_v<ReturnType, Class&>)
-	{
-		std::apply(FunctionPtr, thisPtrAddedArguments);
-		
-		toReturn = self;
-	}
-	else
-	{
-		ReturnType returnValue = std::apply(FunctionPtr, thisPtrAddedArguments);
-
-		if constexpr (std::is_fundamental_v<ReturnType> || std::is_same_v<ReturnType, const char*>)
-		{
-			const char* format = get_argument_type_format_string<ReturnType>();
-
-			toReturn = Py_BuildValue(format, returnValue);
-		}
-		else if constexpr (std::is_same_v<ReturnType, std::string>)
-		{
-			toReturn = Py_BuildValue("s", returnValue.c_str());
-		}
-		else
-		{
-			toReturn = Py_BuildValue("O&", &Converter<ReturnType>::BuildValue, returnValue);
-		}
-	}
+	PyObject* toReturn = get_return_value_ref_possible<FunctionPtrType, FunctionPtr, ReturnType, Class&>(thisPtrAddedArguments, 1, self);  // 1 is a dummy
 
 	reinterpret_cast<PyExportedClass<Class>*>(self)->t = instance;
 
@@ -1121,51 +869,14 @@ PyObject* MemberOperatorDispatcher<FunctionPtrType, FunctionPtr, ReturnType, Par
 {
 	ParameterTypeTuple arguments;
 
-	bool parseResult = true;
-	boost::mp11::mp_for_each<boost::mp11::mp_iota_c<ParameterCount - 1>>([&](auto i)
-		{
-			using NthParameterType = std::tuple_element_t<i, ParameterTypeTuple>;
+	PyObject* const argTuple = PyTuple_Pack(1, arg);
 
-			TempVarType<NthParameterType> value;
-
-			if constexpr (std::is_fundamental_v<NthParameterType> || std::is_same_v<NthParameterType, const char*>)
-			{
-				const char* format = get_argument_type_format_string<NthParameterType>();
-
-				if (!PyArg_Parse(arg, format, &value))
-				{
-					parseResult = false;
-					return;
-				}
-			}
-			else if constexpr (std::is_same_v<NthParameterType, std::string>)
-			{
-				const char* temp;
-				if (!PyArg_Parse(arg, "s", &temp))
-				{
-					parseResult = false;
-					return;
-				}
-
-				value = temp;
-			}
-			else
-			{
-				if (!PyArg_Parse(arg, "O&", &Converter<NthParameterType>::ParseValue, &value))
-				{
-					parseResult = false;
-					return;
-				}
-			}
-
-			std::get<i>(arguments) = std::move(static_cast<NthParameterType>(value));
-		}
-	);
-
-	if (!parseResult)
+	if (!parse_arguments<ParameterCount - 1>(argTuple, arguments))
 	{
+		Py_DECREF(argTuple);
 		return nullptr;
 	}
+	Py_DECREF(argTuple);
 
 	
 	Class instance;
@@ -1173,38 +884,7 @@ PyObject* MemberOperatorDispatcher<FunctionPtrType, FunctionPtr, ReturnType, Par
 
 	auto thisPtrAddedArguments = std::tuple_cat(std::make_tuple(&instance), arguments);
 
-	PyObject* toReturn;
-	if constexpr (std::is_same_v<ReturnType, void>)
-	{
-		std::apply(FunctionPtr, thisPtrAddedArguments);
-
-		toReturn = Py_None;
-	}
-	else if constexpr (std::is_same_v<ReturnType, Class&>)
-	{
-		std::apply(FunctionPtr, thisPtrAddedArguments);
-		
-		toReturn = self;
-	}
-	else
-	{
-		ReturnType returnValue = std::apply(FunctionPtr, thisPtrAddedArguments);
-
-		if constexpr (std::is_fundamental_v<ReturnType> || std::is_same_v<ReturnType, const char*>)
-		{
-			const char* format = get_argument_type_format_string<ReturnType>();
-
-			toReturn = Py_BuildValue(format, returnValue);
-		}
-		else if constexpr (std::is_same_v<ReturnType, std::string>)
-		{
-			toReturn = Py_BuildValue("s", returnValue.c_str());
-		}
-		else
-		{
-			toReturn = Py_BuildValue("O&", &Converter<ReturnType>::BuildValue, returnValue);
-		}
-	}
+	PyObject* toReturn = get_return_value_ref_possible<FunctionPtrType, FunctionPtr, ReturnType, Class&>(thisPtrAddedArguments, 1, self);  // 1 is a dummy
 
 	reinterpret_cast<PyExportedClass<Class>*>(self)->t = instance;
 
@@ -1222,38 +902,7 @@ PyObject* MemberOperatorDispatcher<FunctionPtrType, FunctionPtr, ReturnType, Par
 
 	auto thisPtrAddedArguments = std::make_tuple(&instance);
 
-	PyObject* toReturn;
-	if constexpr (std::is_same_v<ReturnType, void>)
-	{
-		std::apply(FunctionPtr, thisPtrAddedArguments);
-
-		toReturn = Py_None;
-	}
-	else if constexpr (std::is_same_v<ReturnType, Class&>)
-	{
-		std::apply(FunctionPtr, thisPtrAddedArguments);
-		
-		toReturn = self;
-	}
-	else
-	{
-		ReturnType returnValue = std::apply(FunctionPtr, thisPtrAddedArguments);
-
-		if constexpr (std::is_fundamental_v<ReturnType> || std::is_same_v<ReturnType, const char*>)
-		{
-			const char* format = get_argument_type_format_string<ReturnType>();
-
-			toReturn = Py_BuildValue(format, returnValue);
-		}
-		else if constexpr (std::is_same_v<ReturnType, std::string>)
-		{
-			toReturn = Py_BuildValue("s", returnValue.c_str());
-		}
-		else
-		{
-			toReturn = Py_BuildValue("O&", &Converter<ReturnType>::BuildValue, returnValue);
-		}
-	}
+	PyObject* toReturn = get_return_value_ref_possible<FunctionPtrType, FunctionPtr, ReturnType, Class&>(thisPtrAddedArguments, 1, self);  // 1 is a dummy
 	
 	reinterpret_cast<PyExportedClass<Class>*>(self)->t = instance;
 

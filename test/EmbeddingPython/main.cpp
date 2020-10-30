@@ -186,7 +186,8 @@ int main()
 
 	PY_EXPORT_MEMBER_FUNCTION(Vec, add, test);
 	PY_EXPORT_MEMBER_FUNCTION_NAME(Vec, add, q, test);
-	PY_EXPORT_MEMBER_FUNCTION(Vec, increment, test);
+	PY_EXPORT_MEMBER_FUNCTION_AS_STATIC_FUNCTION_LAMBDA(Vec, increment, []() { static Vec v; return &v; }, test);
+	//PY_EXPORT_MEMBER_FUNCTION(Vec, increment, test);
 	PY_EXPORT_MEMBER_OPERATOR(Vec, operator+=, cpp_python_embedder::EOperatorType::INPLACE_ADD, test);
 	PY_EXPORT_MEMBER_OPERATOR(Vec, operator-, cpp_python_embedder::EOperatorType::NEGATIVE, test);
 	PY_EXPORT_TYPE(Vec, test, (x)(y)(z));
