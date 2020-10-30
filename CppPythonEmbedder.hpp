@@ -140,7 +140,7 @@ namespace cpp_python_embedder
 
 // TODO: Remove duplicate codes using constexpr function or macro
 // TODO: Separate files and #include
-// TODO: Memory Leak (INCREF, DECREF) https://docs.python.org/3/c-api/intro.html#objects-types-and-reference-counts
+// (INCREF, DECREF) https://docs.python.org/3/c-api/intro.html#objects-types-and-reference-counts
 // http://edcjones.tripod.com/refcount.html
 
 
@@ -1180,7 +1180,7 @@ PyObject* MemberOperatorDispatcher<FunctionPtrType, FunctionPtr, ReturnType, Par
 
 		toReturn = Py_None;
 	}
-	if constexpr (std::is_same_v<ReturnType, Class&>)
+	else if constexpr (std::is_same_v<ReturnType, Class&>)
 	{
 		std::apply(FunctionPtr, thisPtrAddedArguments);
 		
@@ -1229,7 +1229,7 @@ PyObject* MemberOperatorDispatcher<FunctionPtrType, FunctionPtr, ReturnType, Par
 
 		toReturn = Py_None;
 	}
-	if constexpr (std::is_same_v<ReturnType, Class&>)
+	else if constexpr (std::is_same_v<ReturnType, Class&>)
 	{
 		std::apply(FunctionPtr, thisPtrAddedArguments);
 		
