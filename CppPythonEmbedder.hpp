@@ -42,11 +42,8 @@
 
 #include <boost/mpl/at.hpp>  // at_c
 
-#include <boost/function_types/is_function_pointer.hpp>
-#include <boost/function_types/is_member_function_pointer.hpp>
 #include <boost/function_types/function_arity.hpp>
 #include <boost/function_types/parameter_types.hpp>
-#include <boost/function_types/result_type.hpp>
 
 #include <boost/preprocessor/seq/for_each.hpp>
 #include <boost/preprocessor/seq/pop_back.hpp>
@@ -225,6 +222,7 @@ inline namespace python_embedder_detail
 {
 	using HashValueType = unsigned long long;
 
+
 	
 	template<typename T, typename = void>
 	struct is_const_ref : std::false_type
@@ -249,6 +247,7 @@ inline namespace python_embedder_detail
 	using remove_const_ref_t = typename remove_const_ref<T>::type;
 
 
+	
 	template<typename T, typename = void>
 	struct is_supported_custom_type : std::false_type
 	{};
@@ -323,19 +322,19 @@ inline namespace python_embedder_detail
 
 	
 	template<template<typename, typename = void> typename Checker, typename ParameterTypes, size_t... Indices>
-	auto validity_checker_helper(ParameterTypes, std::index_sequence<Indices...>)
+	auto validity_checker_helper(std::index_sequence<Indices...>)
 		-> std::conjunction<Checker<std::tuple_element_t<Indices, ParameterTypes>>...>;
 
 	template<template<typename, typename> typename Checker, typename ParameterTypes, size_t ParameterCount>
-	using ValidityChecker = decltype(validity_checker_helper<Checker>(std::declval<ParameterTypes>(), std::make_index_sequence<ParameterCount>()));
+	using ValidityChecker = decltype(validity_checker_helper<Checker, ParameterTypes>(std::make_index_sequence<ParameterCount>()));
 
 	
 	template<typename ParameterTypes, size_t... Indices>
-	auto get_parameter_tuple_helper(ParameterTypes, std::index_sequence<Indices...>)
+	auto get_parameter_tuple_helper(std::index_sequence<Indices...>)
 		-> std::tuple<remove_const_ref_t<typename boost::mpl::at_c<ParameterTypes, Indices>::type>...>;
 
 	template<typename ParameterTypes, size_t ParameterCount>
-	using ParameterTuple = decltype(get_parameter_tuple_helper(std::declval<ParameterTypes>(), std::make_index_sequence<ParameterCount>()));
+	using ParameterTuple = decltype(get_parameter_tuple_helper<ParameterTypes>(std::make_index_sequence<ParameterCount>()));
 
 	
 	template<typename FirstParameterType, typename... ParameterTypes>
@@ -347,6 +346,14 @@ inline namespace python_embedder_detail
 
 	template<typename... Args>
 	using TypeList = std::tuple<Args...>;
+
+
+	template<typename FunctionPtrType, typename ParameterTypes, size_t... Indices>
+	auto get_function_return_type_helper(std::index_sequence<Indices...>)
+		->std::invoke_result_t<FunctionPtrType, typename boost::mpl::at_c<ParameterTypes, Indices>::type...>;
+
+	template<typename FunctionPtrType, typename ParameterTypes, size_t ParameterCount>
+	using FunctionReturnType = decltype(get_function_return_type_helper<FunctionPtrType, ParameterTypes>(std::make_index_sequence<ParameterCount>()));
 
 
 
@@ -915,13 +922,14 @@ auto python_embedder_detail::get_function_replicated_function()
 {
 	using namespace boost::function_types;
 
-	static_assert(is_function_pointer<FunctionPtrType>::value);
-	static_assert(!is_member_function_pointer<FunctionPtrType>::value);
+	static_assert(std::is_function_v<std::remove_pointer_t<FunctionPtrType>>);
+	static_assert(!std::is_member_function_pointer_v<FunctionPtrType>);
 	
 	constexpr size_t parameterCount = function_arity<FunctionPtrType>::value;
-	using ReturnType = typename result_type<FunctionPtrType>::type;
 	using ParameterTypes = parameter_types<FunctionPtrType>;
 	using ParameterTypeTuple = ParameterTuple<ParameterTypes, parameterCount>;
+	using ReturnType = FunctionReturnType<FunctionPtrType, ParameterTypes, parameterCount>;
+	
 	static_assert(ValidityChecker<is_supported_parameter_type, ParameterTypeTuple, parameterCount>::value);
 	static_assert(is_supported_return_type_v<ReturnType>);
 
@@ -937,24 +945,25 @@ auto python_embedder_detail::get_member_function_as_static_function_replicated_f
 {
 	using namespace boost::function_types;
 
-	static_assert(is_member_function_pointer<FunctionPtrType>::value);
-	static_assert(is_function_pointer<InstanceReturnFunctionType>::value);
+	static_assert(std::is_member_function_pointer_v<FunctionPtrType>);
+	static_assert(std::is_function_v<std::remove_pointer_t<InstanceReturnFunctionType>>);
 
 	constexpr size_t parameterCount = function_arity<FunctionPtrType>::value;
-	using ReturnType = typename result_type<FunctionPtrType>::type;
 	using ParameterTypes = parameter_types<FunctionPtrType>;
 	using ParameterTypeTuple = TailsParameterTuple<ParameterTypes, parameterCount>;
+	using ReturnType = FunctionReturnType<FunctionPtrType, ParameterTypes, parameterCount>;
 
 	constexpr size_t instanceReturnerParameterCount = function_arity<InstanceReturnFunctionType>::value;
-	using InstanceReturnerReturnType = typename result_type<InstanceReturnFunctionType>::type;
 	using InstanceReturnerParameterTypes = parameter_types<InstanceReturnFunctionType>;
 	using InstanceReturnerParameterTypeTuple = ParameterTuple<InstanceReturnerParameterTypes, instanceReturnerParameterCount>;
+	using InstanceReturnerReturnType = FunctionReturnType<InstanceReturnFunctionType, InstanceReturnerParameterTypes, instanceReturnerParameterCount>;
 
-	static_assert(ValidityChecker<is_supported_parameter_type, InstanceReturnerParameterTypeTuple, instanceReturnerParameterCount>::value);
-	static_assert(std::is_same_v<InstanceReturnerReturnType, remove_const_ref_t<typename boost::mpl::at_c<ParameterTypes, 0>::type>*>);
 	static_assert(ValidityChecker<is_supported_parameter_type, ParameterTypeTuple, parameterCount - 1>::value);
 	static_assert(is_supported_return_type_v<ReturnType> || std::is_same_v<ReturnType, std::remove_pointer_t<InstanceReturnerReturnType>&>);
 
+	static_assert(ValidityChecker<is_supported_parameter_type, InstanceReturnerParameterTypeTuple, instanceReturnerParameterCount>::value);
+	static_assert(std::is_same_v<InstanceReturnerReturnType, remove_const_ref_t<typename boost::mpl::at_c<ParameterTypes, 0>::type>*>);
+	
 	using InstantiatedDispatcher = MemberFunctionAsStaticFunctionDispatcher<FunctionPtrType, FunctionPtr, ReturnType, parameterCount, ParameterTypeTuple,
 		InstanceReturnFunctionType, InstanceReturnFunction, InstanceReturnerReturnType, instanceReturnerParameterCount, InstanceReturnerParameterTypeTuple>;
 
@@ -968,23 +977,24 @@ auto python_embedder_detail::get_member_function_as_static_function_lambda_repli
 {
 	using namespace boost::function_types;
 
-	static_assert(is_member_function_pointer<FunctionPtrType>::value);
+	static_assert(std::is_member_function_pointer_v<FunctionPtrType>);
 
 	constexpr size_t parameterCount = function_arity<FunctionPtrType>::value;
-	using ReturnType = typename result_type<FunctionPtrType>::type;
 	using ParameterTypes = parameter_types<FunctionPtrType>;
 	using ParameterTypeTuple = TailsParameterTuple<ParameterTypes, parameterCount>;
+	using ReturnType = FunctionReturnType<FunctionPtrType, ParameterTypes, parameterCount>;
 
 	constexpr size_t instanceReturnerParameterCount = function_arity<InstanceReturnFunctionType>::value;
-	using InstanceReturnerReturnType = typename result_type<InstanceReturnFunctionType>::type;
 	using InstanceReturnerParameterTypes = parameter_types<InstanceReturnFunctionType>;
 	using InstanceReturnerParameterTypeTuple = TailsParameterTuple<InstanceReturnerParameterTypes, instanceReturnerParameterCount>;
+	using InstanceReturnerReturnType = FunctionReturnType<InstanceReturnFunctionType, InstanceReturnerParameterTypes, instanceReturnerParameterCount>;
 
-	static_assert(ValidityChecker<is_supported_parameter_type, InstanceReturnerParameterTypeTuple, instanceReturnerParameterCount - 1>::value);
-	static_assert(std::is_same_v<InstanceReturnerReturnType, remove_const_ref_t<typename boost::mpl::at_c<ParameterTypes, 0>::type>*>);
 	static_assert(ValidityChecker<is_supported_parameter_type, ParameterTypeTuple, parameterCount - 1>::value);
 	static_assert(is_supported_return_type_v<ReturnType> || std::is_same_v<ReturnType, std::remove_pointer_t<InstanceReturnerReturnType>&>);
 
+	static_assert(ValidityChecker<is_supported_parameter_type, InstanceReturnerParameterTypeTuple, instanceReturnerParameterCount - 1>::value);
+	static_assert(std::is_same_v<InstanceReturnerReturnType, remove_const_ref_t<typename boost::mpl::at_c<ParameterTypes, 0>::type>*>);
+	
 	using InstantiatedDispatcher = MemberFunctionAsStaticFunctionLambdaDispatcher<FunctionPtrType, FunctionPtr, ReturnType, parameterCount, ParameterTypeTuple,
 		InstanceReturnFunctionType, InstanceReturnFunction, InstanceReturnerReturnType, instanceReturnerParameterCount, InstanceReturnerParameterTypeTuple,
 		LambdaPtrType, LambdaPtr
@@ -1000,13 +1010,13 @@ auto python_embedder_detail::get_member_function_replicated_function()
 {
 	using namespace boost::function_types;
 
-	static_assert(is_member_function_pointer<FunctionPtrType>::value);
+	static_assert(std::is_member_function_pointer_v<FunctionPtrType>);
 	static_assert(is_supported_custom_type_v<Class>);
 
 	constexpr size_t parameterCount = function_arity<FunctionPtrType>::value;
-	using ReturnType = typename result_type<FunctionPtrType>::type;
 	using ParameterTypes = parameter_types<FunctionPtrType>;
 	using ParameterTypeTuple = TailsParameterTuple<ParameterTypes, parameterCount>;
+	using ReturnType = FunctionReturnType<FunctionPtrType, ParameterTypes, parameterCount>;
 
 	static_assert(ValidityChecker<is_supported_parameter_type, ParameterTypeTuple, parameterCount - 1>::value);
 	static_assert(is_supported_return_type_v<ReturnType> || std::is_same_v<ReturnType, Class&>);
@@ -1253,9 +1263,9 @@ void Exporter<ModuleNameHashValue>::RegisterMemberOperator(const EOperatorType o
 	static_assert(is_supported_custom_type_v<Class>);
 
 	constexpr size_t parameterCount = function_arity<FunctionPtrType>::value;
-	using ReturnType = typename result_type<FunctionPtrType>::type;
 	using ParameterTypes = parameter_types<FunctionPtrType>;
 	using ParameterTypeTuple = TailsParameterTuple<ParameterTypes, parameterCount>;
+	using ReturnType = FunctionReturnType<FunctionPtrType, ParameterTypes, parameterCount>;
 	
 	static_assert(ValidityChecker<is_supported_parameter_type, ParameterTypeTuple, parameterCount - 1>::value);
 	static_assert(is_supported_return_type_v<ReturnType> || std::is_same_v<ReturnType, Class&>);
