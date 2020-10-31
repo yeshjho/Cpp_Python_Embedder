@@ -135,7 +135,7 @@ namespace cpp_python_embedder
 // TODO: Way to choose between overloads (take explicit function ptr?)
 // TODO: Support user-defined data types as field
 // TODO: Support array as field (python list)
-// TODO: Support operator overloading https://docs.python.org/3/c-api/typeobj.html#number-object-structures tp_as_number
+// TODO: Support operator overloading https://docs.python.org/3/c-api/typeobj.html#number-object-structures
 // TODO: Support template operator overloading (maybe?)
 
 // TODO: Separate files and #include
