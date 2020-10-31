@@ -138,7 +138,6 @@ namespace cpp_python_embedder
 // TODO: Support operator overloading https://docs.python.org/3/c-api/typeobj.html#number-object-structures tp_as_number
 // TODO: Support template operator overloading (maybe?)
 
-// TODO: Remove duplicate codes using constexpr function or macro
 // TODO: Separate files and #include
 // (INCREF, DECREF) https://docs.python.org/3/c-api/intro.html#objects-types-and-reference-counts
 // http://edcjones.tripod.com/refcount.html
@@ -422,10 +421,10 @@ inline namespace python_embedder_detail
 	constexpr bool parse_arguments(PyObject* args, ParameterTypeTuple& parsedArguments);
 
 	template<typename FunctionPtrType, FunctionPtrType FunctionPtr, typename ReturnType, typename ParameterTypeTuple>
-	PyObject* get_return_value(const ParameterTypeTuple& arguments);
+	PyObject* execute_get_return_value(const ParameterTypeTuple& arguments);
 
 	template<typename FunctionPtrType, FunctionPtrType FunctionPtr, typename ReturnType, typename ClassReferenceType, typename ParameterTypeTuple, typename InstanceType>
-	PyObject* get_return_value_ref_possible(const ParameterTypeTuple& arguments, const InstanceType& instance, PyObject* self = nullptr);
+	PyObject* execute_and_get_return_value_ref_possible(const ParameterTypeTuple& arguments, const InstanceType& instance, PyObject* self = nullptr);
 
 
 
@@ -842,7 +841,7 @@ constexpr bool python_embedder_detail::parse_arguments(PyObject* args, Parameter
 	
 
 template <typename FunctionPtrType, FunctionPtrType FunctionPtr, typename ReturnType, typename ParameterTypeTuple>
-PyObject* python_embedder_detail::get_return_value(const ParameterTypeTuple& arguments)
+PyObject* python_embedder_detail::execute_get_return_value(const ParameterTypeTuple& arguments)
 {
 	if constexpr (std::is_same_v<ReturnType, void>)
 	{
@@ -874,7 +873,7 @@ PyObject* python_embedder_detail::get_return_value(const ParameterTypeTuple& arg
 
 	
 template <typename FunctionPtrType, FunctionPtrType FunctionPtr, typename ReturnType, typename ClassReferenceType, typename ParameterTypeTuple, typename InstanceType>
-PyObject* python_embedder_detail::get_return_value_ref_possible(const ParameterTypeTuple& arguments, const InstanceType& instance, PyObject* self)
+PyObject* python_embedder_detail::execute_and_get_return_value_ref_possible(const ParameterTypeTuple& arguments, const InstanceType& instance, PyObject* self)
 {
 	if constexpr (std::is_same_v<ReturnType, void>)
 	{
@@ -1031,7 +1030,7 @@ PyObject* FunctionDispatcher<FunctionPtrType, FunctionPtr, ReturnType, Parameter
 	}
 
 	
-	PyObject* toReturn = get_return_value<FunctionPtrType, FunctionPtr, ReturnType>(arguments);
+	PyObject* toReturn = execute_get_return_value<FunctionPtrType, FunctionPtr, ReturnType>(arguments);
 	Py_INCREF(toReturn);
 	return toReturn;
 }
@@ -1067,7 +1066,7 @@ PyObject* MemberFunctionAsStaticFunctionDispatcher<FunctionPtrType, FunctionPtr,
 	InstanceReturnFunctionReturnType instance = std::apply(InstanceReturnFunction, instanceReturnerArguments);
 	auto thisPtrAddedArguments = std::tuple_cat(std::make_tuple(instance), arguments);
 
-	PyObject* toReturn = get_return_value_ref_possible<FunctionPtrType, FunctionPtr, ReturnType, std::remove_pointer_t<InstanceReturnFunctionReturnType>&>
+	PyObject* toReturn = execute_and_get_return_value_ref_possible<FunctionPtrType, FunctionPtr, ReturnType, std::remove_pointer_t<InstanceReturnFunctionReturnType>&>
 		(thisPtrAddedArguments, instance);
 
 	Py_INCREF(toReturn);
@@ -1107,7 +1106,7 @@ PyObject* MemberFunctionAsStaticFunctionLambdaDispatcher<FunctionPtrType, Functi
 	
 	auto thisPtrAddedArguments = std::tuple_cat(std::make_tuple(instance), arguments);
 
-	PyObject* toReturn = get_return_value_ref_possible<FunctionPtrType, FunctionPtr, ReturnType, std::remove_pointer_t<InstanceReturnFunctionReturnType>&>
+	PyObject* toReturn = execute_and_get_return_value_ref_possible<FunctionPtrType, FunctionPtr, ReturnType, std::remove_pointer_t<InstanceReturnFunctionReturnType>&>
 		(thisPtrAddedArguments, instance);
 
 	Py_INCREF(toReturn);
@@ -1128,14 +1127,9 @@ PyObject* MemberFunctionDispatcher<FunctionPtrType, FunctionPtr, ReturnType, Par
 	}
 
 	
-	Class instance;
-	Converter<Class>::ParseValue(self, &instance);
+	auto thisPtrAddedArguments = std::tuple_cat(std::make_tuple(&reinterpret_cast<PyExportedClass<Class>*>(self)->t), arguments);
 
-	auto thisPtrAddedArguments = std::tuple_cat(std::make_tuple(&instance), arguments);
-
-	PyObject* toReturn = get_return_value_ref_possible<FunctionPtrType, FunctionPtr, ReturnType, Class&>(thisPtrAddedArguments, 1, self);  // 1 is a dummy
-
-	reinterpret_cast<PyExportedClass<Class>*>(self)->t = instance;
+	PyObject* toReturn = execute_and_get_return_value_ref_possible<FunctionPtrType, FunctionPtr, ReturnType, Class&>(thisPtrAddedArguments, 1, self);  // 1 is a dummy
 
 	Py_INCREF(toReturn);
 	return toReturn;
@@ -1159,14 +1153,9 @@ PyObject* MemberOperatorDispatcher<FunctionPtrType, FunctionPtr, ReturnType, Par
 	Py_DECREF(argTuple);
 
 	
-	Class instance;
-	Converter<Class>::ParseValue(self, &instance);
+	auto thisPtrAddedArguments = std::tuple_cat(std::make_tuple(&reinterpret_cast<PyExportedClass<Class>*>(self)->t), arguments);
 
-	auto thisPtrAddedArguments = std::tuple_cat(std::make_tuple(&instance), arguments);
-
-	PyObject* toReturn = get_return_value_ref_possible<FunctionPtrType, FunctionPtr, ReturnType, Class&>(thisPtrAddedArguments, 1, self);  // 1 is a dummy
-
-	reinterpret_cast<PyExportedClass<Class>*>(self)->t = instance;
+	PyObject* toReturn = execute_and_get_return_value_ref_possible<FunctionPtrType, FunctionPtr, ReturnType, Class&>(thisPtrAddedArguments, 1, self);  // 1 is a dummy
 
 	Py_INCREF(toReturn);
 	return toReturn;
@@ -1178,14 +1167,9 @@ template <typename FunctionPtrType, FunctionPtrType FunctionPtr, typename Return
 PyObject* MemberOperatorDispatcher<FunctionPtrType, FunctionPtr, ReturnType, ParameterCount, ParameterTypeTuple, Class, Operator>
 	::UnaryReplicatedFunction(PyObject* self)
 {
-	Class instance;
-	Converter<Class>::ParseValue(self, &instance);
+	auto thisPtrAddedArguments = std::make_tuple(&reinterpret_cast<PyExportedClass<Class>*>(self)->t);
 
-	auto thisPtrAddedArguments = std::make_tuple(&instance);
-
-	PyObject* toReturn = get_return_value_ref_possible<FunctionPtrType, FunctionPtr, ReturnType, Class&>(thisPtrAddedArguments, 1, self);  // 1 is a dummy
-	
-	reinterpret_cast<PyExportedClass<Class>*>(self)->t = instance;
+	PyObject* toReturn = execute_and_get_return_value_ref_possible<FunctionPtrType, FunctionPtr, ReturnType, Class&>(thisPtrAddedArguments, 1, self);  // 1 is a dummy
 
 	Py_INCREF(toReturn);
 	return toReturn;
