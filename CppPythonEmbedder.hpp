@@ -40,16 +40,13 @@
 
 #include <boost/mp11/algorithm.hpp>  // mp_for_each, mp_iota_c
 
-#include <boost/mpl/at.hpp>  // at_c
-
-#include <boost/function_types/function_arity.hpp>
-#include <boost/function_types/parameter_types.hpp>
-
 #include <boost/preprocessor/seq/for_each.hpp>
 #include <boost/preprocessor/seq/pop_back.hpp>
 #include <boost/preprocessor/seq/reverse.hpp>
 
 #include <xxhash_cx/xxhash_cx.h>
+
+#include "FunctionTypes.hpp"
 
 
 using xxhash::literals::operator ""_xxh64;
@@ -223,20 +220,6 @@ inline namespace python_embedder_detail
 	using HashValueType = unsigned long long;
 
 
-	
-	template<typename T, typename = void>
-	struct is_const_ref : std::false_type
-	{};
-
-	template<typename T>
-	struct is_const_ref<T, std::enable_if_t<std::is_lvalue_reference_v<T> && std::is_const_v<std::remove_reference_t<T>>>
-	> : std::true_type
-	{};
-
-	template<typename T>
-	constexpr bool is_const_ref_v = is_const_ref<T>::value;
-
-
 	template<typename T>
 	struct remove_const_ref
 	{
@@ -281,12 +264,8 @@ inline namespace python_embedder_detail
 
 	template<typename T>
 	struct is_supported_parameter_type<T, std::enable_if_t<
-		is_supported_field_type_v<T> ||
-		(is_supported_custom_type_v<T> && (std::is_move_assignable_v<T> || std::is_copy_assignable_v<T>)) ||
-		(is_const_ref_v<T> && 
-			(is_supported_field_type_v<remove_const_ref_t<T>> ||
-			(is_supported_custom_type_v<remove_const_ref_t<T>> && (std::is_move_assignable_v<remove_const_ref_t<T>> || std::is_copy_assignable_v<remove_const_ref_t<T>>)))
-		)
+		is_supported_field_type_v<remove_const_ref_t<T>> ||
+		(is_supported_custom_type_v<remove_const_ref_t<T>> && (std::is_move_assignable_v<remove_const_ref_t<T>> || std::is_copy_assignable_v<remove_const_ref_t<T>>))
 	>> : std::true_type
 	{};
 
@@ -319,7 +298,7 @@ inline namespace python_embedder_detail
 		static constexpr HashValueType templateParametersHashValue = TemplateParametersHashValue_;
 	};
 
-
+	
 	
 	template<template<typename, typename = void> typename Checker, typename ParameterTypes, size_t... Indices>
 	auto validity_checker_helper(std::index_sequence<Indices...>)
@@ -328,34 +307,20 @@ inline namespace python_embedder_detail
 	template<template<typename, typename> typename Checker, typename ParameterTypes, size_t ParameterCount>
 	using ValidityChecker = decltype(validity_checker_helper<Checker, ParameterTypes>(std::make_index_sequence<ParameterCount>()));
 
-	
+
 	template<typename ParameterTypes, size_t... Indices>
-	auto get_parameter_tuple_helper(std::index_sequence<Indices...>)
-		-> std::tuple<remove_const_ref_t<typename boost::mpl::at_c<ParameterTypes, Indices>::type>...>;
+	auto parameter_type_remove_const_ref_helper(std::index_sequence<Indices...>)
+		-> std::tuple<remove_const_ref_t<std::tuple_element_t<Indices, ParameterTypes>>...>;
 
 	template<typename ParameterTypes, size_t ParameterCount>
-	using ParameterTuple = decltype(get_parameter_tuple_helper<ParameterTypes>(std::make_index_sequence<ParameterCount>()));
+	using RemoveConstRefParameterTuple = decltype(parameter_type_remove_const_ref_helper<ParameterTypes>(std::make_index_sequence<ParameterCount>()));
 
 	
-	template<typename FirstParameterType, typename... ParameterTypes>
-	std::tuple<remove_const_ref_t<ParameterTypes>...> get_tails_parameter_tuple_helper(std::tuple<FirstParameterType, ParameterTypes...>);
-
-	template<typename ParameterTypes, size_t ParameterCount>
-	using TailsParameterTuple = decltype(get_tails_parameter_tuple_helper(std::declval<ParameterTuple<ParameterTypes, ParameterCount>>()));
-
 
 	template<typename... Args>
 	using TypeList = std::tuple<Args...>;
 
-
-	template<typename FunctionPtrType, typename ParameterTypes, size_t... Indices>
-	auto get_function_return_type_helper(std::index_sequence<Indices...>)
-		->std::invoke_result_t<FunctionPtrType, typename boost::mpl::at_c<ParameterTypes, Indices>::type...>;
-
-	template<typename FunctionPtrType, typename ParameterTypes, size_t ParameterCount>
-	using FunctionReturnType = decltype(get_function_return_type_helper<FunctionPtrType, ParameterTypes>(std::make_index_sequence<ParameterCount>()));
-
-
+	
 
 	template<typename T, T... Numbers>
 	constexpr T get_nth_element(std::integer_sequence<T, Numbers...>, T i)
@@ -920,15 +885,14 @@ PyObject* python_embedder_detail::execute_and_get_return_value_ref_possible(cons
 template <typename FunctionPtrType, FunctionPtrType FunctionPtr>
 auto python_embedder_detail::get_function_replicated_function()
 {
-	using namespace boost::function_types;
+	using namespace function_types;
 
 	static_assert(std::is_function_v<std::remove_pointer_t<FunctionPtrType>>);
 	static_assert(!std::is_member_function_pointer_v<FunctionPtrType>);
 	
-	constexpr size_t parameterCount = function_arity<FunctionPtrType>::value;
-	using ParameterTypes = parameter_types<FunctionPtrType>;
-	using ParameterTypeTuple = ParameterTuple<ParameterTypes, parameterCount>;
-	using ReturnType = FunctionReturnType<FunctionPtrType, ParameterTypes, parameterCount>;
+	constexpr size_t parameterCount = FunctionTypes<FunctionPtrType>::parameterCount;
+	using ParameterTypeTuple = RemoveConstRefParameterTuple<typename FunctionTypes<FunctionPtrType>::Parameters, parameterCount>;
+	using ReturnType = typename FunctionTypes<FunctionPtrType>::ReturnType;
 	
 	static_assert(ValidityChecker<is_supported_parameter_type, ParameterTypeTuple, parameterCount>::value);
 	static_assert(is_supported_return_type_v<ReturnType>);
@@ -943,26 +907,24 @@ auto python_embedder_detail::get_function_replicated_function()
 template <typename FunctionPtrType, FunctionPtrType FunctionPtr, typename InstanceReturnFunctionType, InstanceReturnFunctionType InstanceReturnFunction>
 auto python_embedder_detail::get_member_function_as_static_function_replicated_function()
 {
-	using namespace boost::function_types;
+	using namespace function_types;
 
 	static_assert(std::is_member_function_pointer_v<FunctionPtrType>);
 	static_assert(std::is_function_v<std::remove_pointer_t<InstanceReturnFunctionType>>);
 
-	constexpr size_t parameterCount = function_arity<FunctionPtrType>::value;
-	using ParameterTypes = parameter_types<FunctionPtrType>;
-	using ParameterTypeTuple = TailsParameterTuple<ParameterTypes, parameterCount>;
-	using ReturnType = FunctionReturnType<FunctionPtrType, ParameterTypes, parameterCount>;
+	constexpr size_t parameterCount = FunctionTypes<FunctionPtrType>::parameterCount;
+	using ParameterTypeTuple = RemoveConstRefParameterTuple<typename FunctionTypes<FunctionPtrType>::Parameters, parameterCount>;
+	using ReturnType = typename FunctionTypes<FunctionPtrType>::ReturnType;
 
-	constexpr size_t instanceReturnerParameterCount = function_arity<InstanceReturnFunctionType>::value;
-	using InstanceReturnerParameterTypes = parameter_types<InstanceReturnFunctionType>;
-	using InstanceReturnerParameterTypeTuple = ParameterTuple<InstanceReturnerParameterTypes, instanceReturnerParameterCount>;
-	using InstanceReturnerReturnType = FunctionReturnType<InstanceReturnFunctionType, InstanceReturnerParameterTypes, instanceReturnerParameterCount>;
+	constexpr size_t instanceReturnerParameterCount = FunctionTypes<InstanceReturnFunctionType>::parameterCount;
+	using InstanceReturnerParameterTypeTuple = RemoveConstRefParameterTuple<typename FunctionTypes<InstanceReturnFunctionType>::Parameters, instanceReturnerParameterCount>;
+	using InstanceReturnerReturnType = typename FunctionTypes<InstanceReturnFunctionType>::ReturnType;
 
-	static_assert(ValidityChecker<is_supported_parameter_type, ParameterTypeTuple, parameterCount - 1>::value);
+	static_assert(ValidityChecker<is_supported_parameter_type, ParameterTypeTuple, parameterCount>::value);
 	static_assert(is_supported_return_type_v<ReturnType> || std::is_same_v<ReturnType, std::remove_pointer_t<InstanceReturnerReturnType>&>);
 
 	static_assert(ValidityChecker<is_supported_parameter_type, InstanceReturnerParameterTypeTuple, instanceReturnerParameterCount>::value);
-	static_assert(std::is_same_v<InstanceReturnerReturnType, remove_const_ref_t<typename boost::mpl::at_c<ParameterTypes, 0>::type>*>);
+	static_assert(std::is_same_v<InstanceReturnerReturnType, typename FunctionTypes<FunctionPtrType>::Class*>);
 	
 	using InstantiatedDispatcher = MemberFunctionAsStaticFunctionDispatcher<FunctionPtrType, FunctionPtr, ReturnType, parameterCount, ParameterTypeTuple,
 		InstanceReturnFunctionType, InstanceReturnFunction, InstanceReturnerReturnType, instanceReturnerParameterCount, InstanceReturnerParameterTypeTuple>;
@@ -975,26 +937,24 @@ auto python_embedder_detail::get_member_function_as_static_function_replicated_f
 template <typename FunctionPtrType, FunctionPtrType FunctionPtr, typename InstanceReturnFunctionType, InstanceReturnFunctionType InstanceReturnFunction, typename LambdaPtrType, LambdaPtrType LambdaPtr>
 auto python_embedder_detail::get_member_function_as_static_function_lambda_replicated_function()
 {
-	using namespace boost::function_types;
+	using namespace function_types;
 
 	static_assert(std::is_member_function_pointer_v<FunctionPtrType>);
 
-	constexpr size_t parameterCount = function_arity<FunctionPtrType>::value;
-	using ParameterTypes = parameter_types<FunctionPtrType>;
-	using ParameterTypeTuple = TailsParameterTuple<ParameterTypes, parameterCount>;
-	using ReturnType = FunctionReturnType<FunctionPtrType, ParameterTypes, parameterCount>;
+	constexpr size_t parameterCount = FunctionTypes<FunctionPtrType>::parameterCount;
+	using ParameterTypeTuple = RemoveConstRefParameterTuple<typename FunctionTypes<FunctionPtrType>::Parameters, parameterCount>;
+	using ReturnType = typename FunctionTypes<FunctionPtrType>::ReturnType;
 
-	constexpr size_t instanceReturnerParameterCount = function_arity<InstanceReturnFunctionType>::value;
-	using InstanceReturnerParameterTypes = parameter_types<InstanceReturnFunctionType>;
-	using InstanceReturnerParameterTypeTuple = TailsParameterTuple<InstanceReturnerParameterTypes, instanceReturnerParameterCount>;
-	using InstanceReturnerReturnType = FunctionReturnType<InstanceReturnFunctionType, InstanceReturnerParameterTypes, instanceReturnerParameterCount>;
-
-	static_assert(ValidityChecker<is_supported_parameter_type, ParameterTypeTuple, parameterCount - 1>::value);
+	constexpr size_t instanceReturnerParameterCount = FunctionTypes<InstanceReturnFunctionType>::parameterCount;
+	using InstanceReturnerParameterTypeTuple = RemoveConstRefParameterTuple<typename FunctionTypes<InstanceReturnFunctionType>::Parameters, instanceReturnerParameterCount>;
+	using InstanceReturnerReturnType = typename FunctionTypes<InstanceReturnFunctionType>::ReturnType;
+	
+	static_assert(ValidityChecker<is_supported_parameter_type, ParameterTypeTuple, parameterCount>::value);
 	static_assert(is_supported_return_type_v<ReturnType> || std::is_same_v<ReturnType, std::remove_pointer_t<InstanceReturnerReturnType>&>);
 
-	static_assert(ValidityChecker<is_supported_parameter_type, InstanceReturnerParameterTypeTuple, instanceReturnerParameterCount - 1>::value);
-	static_assert(std::is_same_v<InstanceReturnerReturnType, remove_const_ref_t<typename boost::mpl::at_c<ParameterTypes, 0>::type>*>);
-	
+	static_assert(ValidityChecker<is_supported_parameter_type, InstanceReturnerParameterTypeTuple, instanceReturnerParameterCount>::value);
+	static_assert(std::is_same_v<InstanceReturnerReturnType, typename FunctionTypes<FunctionPtrType>::Class*>);
+
 	using InstantiatedDispatcher = MemberFunctionAsStaticFunctionLambdaDispatcher<FunctionPtrType, FunctionPtr, ReturnType, parameterCount, ParameterTypeTuple,
 		InstanceReturnFunctionType, InstanceReturnFunction, InstanceReturnerReturnType, instanceReturnerParameterCount, InstanceReturnerParameterTypeTuple,
 		LambdaPtrType, LambdaPtr
@@ -1008,17 +968,16 @@ auto python_embedder_detail::get_member_function_as_static_function_lambda_repli
 template <typename FunctionPtrType, FunctionPtrType FunctionPtr, typename Class>
 auto python_embedder_detail::get_member_function_replicated_function()
 {
-	using namespace boost::function_types;
+	using namespace function_types;
 
 	static_assert(std::is_member_function_pointer_v<FunctionPtrType>);
 	static_assert(is_supported_custom_type_v<Class>);
 
-	constexpr size_t parameterCount = function_arity<FunctionPtrType>::value;
-	using ParameterTypes = parameter_types<FunctionPtrType>;
-	using ParameterTypeTuple = TailsParameterTuple<ParameterTypes, parameterCount>;
-	using ReturnType = FunctionReturnType<FunctionPtrType, ParameterTypes, parameterCount>;
+	constexpr size_t parameterCount = FunctionTypes<FunctionPtrType>::parameterCount;
+	using ParameterTypeTuple = RemoveConstRefParameterTuple<typename FunctionTypes<FunctionPtrType>::Parameters, parameterCount>;
+	using ReturnType = typename FunctionTypes<FunctionPtrType>::ReturnType;
 
-	static_assert(ValidityChecker<is_supported_parameter_type, ParameterTypeTuple, parameterCount - 1>::value);
+	static_assert(ValidityChecker<is_supported_parameter_type, ParameterTypeTuple, parameterCount>::value);
 	static_assert(is_supported_return_type_v<ReturnType> || std::is_same_v<ReturnType, Class&>);
 
 	using InstantiatedDispatcher = MemberFunctionDispatcher<FunctionPtrType, FunctionPtr, ReturnType, parameterCount, ParameterTypeTuple, Class>;
@@ -1063,9 +1022,9 @@ PyObject* MemberFunctionAsStaticFunctionDispatcher<FunctionPtrType, FunctionPtr,
 
 	ParameterTypeTuple arguments;
 
-	PyObject* const realArgs = PyTuple_GetSlice(args, 1, ParameterCount);
+	PyObject* const realArgs = PyTuple_GetSlice(args, 1, ParameterCount + 1);
 
-	if (!parse_arguments<ParameterCount - 1>(realArgs, arguments))
+	if (!parse_arguments<ParameterCount>(realArgs, arguments))
 	{
 		Py_DECREF(realArgs);
 		return nullptr;
@@ -1093,7 +1052,7 @@ PyObject* MemberFunctionAsStaticFunctionLambdaDispatcher<FunctionPtrType, Functi
 
 	PyObject* const instanceReturnFunctionArgs = PyTuple_GetItem(args, 0);
 
-	if (!parse_arguments<InstanceReturnFunctionParameterCount - 1>(instanceReturnFunctionArgs, instanceReturnerArguments))
+	if (!parse_arguments<InstanceReturnFunctionParameterCount>(instanceReturnFunctionArgs, instanceReturnerArguments))
 	{
 		return nullptr;
 	}
@@ -1101,9 +1060,9 @@ PyObject* MemberFunctionAsStaticFunctionLambdaDispatcher<FunctionPtrType, Functi
 
 	ParameterTypeTuple arguments;
 
-	PyObject* const realArgs = PyTuple_GetSlice(args, 1, ParameterCount);
+	PyObject* const realArgs = PyTuple_GetSlice(args, 1, ParameterCount + 1);
 
-	if (!parse_arguments<ParameterCount - 1>(realArgs, arguments))
+	if (!parse_arguments<ParameterCount>(realArgs, arguments))
 	{
 		Py_DECREF(realArgs);
 		return nullptr;
@@ -1131,7 +1090,7 @@ PyObject* MemberFunctionDispatcher<FunctionPtrType, FunctionPtr, ReturnType, Par
 {
 	ParameterTypeTuple arguments;
 
-	if (!parse_arguments<ParameterCount - 1>(args, arguments))
+	if (!parse_arguments<ParameterCount>(args, arguments))
 	{
 		return nullptr;
 	}
@@ -1155,7 +1114,7 @@ PyObject* MemberOperatorDispatcher<FunctionPtrType, FunctionPtr, ReturnType, Par
 
 	PyObject* const argTuple = PyTuple_Pack(1, arg);
 
-	if (!parse_arguments<ParameterCount - 1>(argTuple, arguments))
+	if (!parse_arguments<ParameterCount>(argTuple, arguments))
 	{
 		Py_DECREF(argTuple);
 		return nullptr;
@@ -1258,20 +1217,19 @@ template <HashValueType ModuleNameHashValue>
 template <typename FunctionPtrType, FunctionPtrType FunctionPtr, typename Class>
 void Exporter<ModuleNameHashValue>::RegisterMemberOperator(const EOperatorType operatorType)
 {
-	using namespace boost::function_types;
+	using namespace function_types;
 
 	static_assert(is_supported_custom_type_v<Class>);
 
-	constexpr size_t parameterCount = function_arity<FunctionPtrType>::value;
-	using ParameterTypes = parameter_types<FunctionPtrType>;
-	using ParameterTypeTuple = TailsParameterTuple<ParameterTypes, parameterCount>;
-	using ReturnType = FunctionReturnType<FunctionPtrType, ParameterTypes, parameterCount>;
+	constexpr size_t parameterCount = FunctionTypes<FunctionPtrType>::parameterCount;
+	using ParameterTypeTuple = RemoveConstRefParameterTuple<typename FunctionTypes<FunctionPtrType>::Parameters, parameterCount>;
+	using ReturnType = typename FunctionTypes<FunctionPtrType>::ReturnType;
 	
-	static_assert(ValidityChecker<is_supported_parameter_type, ParameterTypeTuple, parameterCount - 1>::value);
+	static_assert(ValidityChecker<is_supported_parameter_type, ParameterTypeTuple, parameterCount>::value);
 	static_assert(is_supported_return_type_v<ReturnType> || std::is_same_v<ReturnType, Class&>);
 
 
-	if constexpr (parameterCount == 1)  // unary
+	if constexpr (parameterCount == 0)  // unary
 	{
 		switch (operatorType)
 		{
@@ -1296,7 +1254,7 @@ void Exporter<ModuleNameHashValue>::RegisterMemberOperator(const EOperatorType o
 				break;
 		}
 	}
-	else
+	else if constexpr (parameterCount == 1)  // binary
 	{
 		switch (operatorType)
 		{
@@ -1413,8 +1371,6 @@ template <HashValueType ModuleNameHashValue>
 template <HashValueType FunctionNameHashValue, typename... TemplateInstanceInfos>
 void Exporter<ModuleNameHashValue>::RegisterTemplateFunction(const char* functionName)
 {
-	using namespace boost::function_types;
-	
 	using Pairs = TypeList<TemplateInstanceInfos...>;
 	constexpr size_t pairCount = std::tuple_size_v<Pairs>;
 
@@ -1441,8 +1397,6 @@ template <HashValueType ModuleNameHashValue>
 template <HashValueType FunctionNameHashValue, typename InstanceReturnFunctionType, InstanceReturnFunctionType InstanceReturnFunction, typename ... TemplateInstanceInfos>
 void Exporter<ModuleNameHashValue>::RegisterTemplateMemberFunctionAsStaticFunction(const char* functionName)
 {
-	using namespace boost::function_types;
-
 	using Pairs = TypeList<TemplateInstanceInfos...>;
 	constexpr size_t pairCount = std::tuple_size_v<Pairs>;
 
@@ -1469,8 +1423,6 @@ template <HashValueType ModuleNameHashValue>
 template <HashValueType FunctionNameHashValue, typename InstanceReturnFunctionType, InstanceReturnFunctionType InstanceReturnFunction, typename LambdaPtrType, LambdaPtrType LambdaPtr, typename... TemplateInstanceInfos>
 void Exporter<ModuleNameHashValue>::RegisterTemplateMemberFunctionAsStaticFunctionLambda(const char* functionName)
 {
-	using namespace boost::function_types;
-
 	using Pairs = TypeList<TemplateInstanceInfos...>;
 	constexpr size_t pairCount = std::tuple_size_v<Pairs>;
 
@@ -1497,8 +1449,6 @@ template <HashValueType ModuleNameHashValue>
 template <HashValueType FunctionNameHashValue, typename Class, typename... TemplateInstanceInfos>
 void Exporter<ModuleNameHashValue>::RegisterTemplateMemberFunction(const char* functionName)
 {
-	using namespace boost::function_types;
-
 	if (!PyExportedClass<Class>::methods.empty() && PyExportedClass<Class>::methods.back().ml_name == nullptr)
 	{
 		throw std::runtime_error("All member functions must be exported first before its type");
