@@ -80,19 +80,29 @@ using xxhash::literals::operator ""_xxh64;
 
 
 
-#define PY_EXPORT_GLOBAL_FUNCTION_NAME(func, funcName, moduleName) cpp_python_embedder::Exporter<#moduleName##_xxh64>::RegisterFunction<decltype(&##func), &##func>(#funcName)
+
+
+#define PY_EXPORT_GLOBAL_FUNCTION_PTR(funcPtr, funcName, moduleName) cpp_python_embedder::Exporter<#moduleName##_xxh64>::RegisterFunction<decltype(funcPtr), funcPtr>(#funcName)
+#define PY_EXPORT_STATIC_FUNCTION_PTR(funcPtr, funcName, moduleName) PY_EXPORT_GLOBAL_FUNCTION_PTR(funcPtr, funcName, moduleName)
+#define PY_EXPORT_MEMBER_FUNCTION_TPR_AS_STATIC_FUNCTION_PTR(funcPtr, funcName, instanceReturnerPtr, moduleName) cpp_python_embedder::Exporter<#moduleName##_xxh64>::RegisterMemberFunctionAsStaticFunction<decltype(funcPtr), funcPtr, decltype(instanceReturnerPtr), instanceReturnerPtr>(#funcName)
+#define PY_EXPORT_MEMBER_FUNCTION_PTR_AS_STATIC_FUNCTION(funcPtr, funcName, instanceReturner, moduleName) PY_EXPORT_MEMBER_FUNCTION_TPR_AS_STATIC_FUNCTION_PTR(funcPtr, funcName, &##instanceReturner, moduleName)
+#define PY_EXPORT_MEMBER_FUNCTION_PTR_AS_STATIC_FUNCTION_LAMBDA(funcPtr, funcName, instanceReturner, moduleName) static auto T##funcName##moduleName##lambda = instanceReturner; \
+	cpp_python_embedder::Exporter<#moduleName##_xxh64>::RegisterMemberFunctionAsStaticFunctionLambda<decltype(funcPtr), funcPtr, decltype(&decltype(T##funcName##moduleName##lambda##)::operator()), &decltype(T##funcName##moduleName##lambda##)::operator(), decltype(&##T##funcName##moduleName##lambda), &##T##funcName##moduleName##lambda>(#funcName)
+#define PY_EXPORT_MEMBER_FUNCTION_PTR(funcPtr, funcName, moduleName) cpp_python_embedder::Exporter<#moduleName##_xxh64>::RegisterMemberFunction<decltype(funcPtr), funcPtr>(#funcName)
+
+
+#define PY_EXPORT_GLOBAL_FUNCTION_NAME(func, funcName, moduleName) PY_EXPORT_GLOBAL_FUNCTION_PTR(&##func, funcName, moduleName)
 #define PY_EXPORT_STATIC_FUNCTION_NAME(T, func, funcName, moduleName) PY_EXPORT_GLOBAL_FUNCTION_NAME(T##::##func, funcName, moduleName)
-#define PY_EXPORT_MEMBER_FUNCTION_AS_STATIC_FUNCTION_NAME(T, func, funcName, instanceReturner, moduleName) cpp_python_embedder::Exporter<#moduleName##_xxh64>::RegisterMemberFunctionAsStaticFunction<decltype(&##T##::##func), &##T##::##func, decltype(&##instanceReturner), &##instanceReturner>(#funcName)
-#define PY_EXPORT_MEMBER_FUNCTION_AS_STATIC_FUNCTION_LAMBDA_NAME(T, func, funcName, instanceReturner, moduleName) static auto T##funcName##moduleName##lambda = instanceReturner; \
-	cpp_python_embedder::Exporter<#moduleName##_xxh64>::RegisterMemberFunctionAsStaticFunctionLambda<decltype(&##T##::##func), &##T##::##func, decltype(&decltype(T##funcName##moduleName##lambda##)::operator()), &decltype(T##funcName##moduleName##lambda##)::operator(), decltype(&##T##funcName##moduleName##lambda), &##T##funcName##moduleName##lambda>(#funcName)
-#define PY_EXPORT_MEMBER_FUNCTION_NAME(T, func, funcName, moduleName) cpp_python_embedder::Exporter<#moduleName##_xxh64>::RegisterMemberFunction<decltype(&##T##::##func), &##T##::##func, T>(#funcName)
+#define PY_EXPORT_MEMBER_FUNCTION_AS_STATIC_FUNCTION_NAME(T, func, funcName, instanceReturner, moduleName) PY_EXPORT_MEMBER_FUNCTION_PTR_AS_STATIC_FUNCTION(&##T##::##func, funcName, instanceReturner, moduleName)
+#define PY_EXPORT_MEMBER_FUNCTION_AS_STATIC_FUNCTION_LAMBDA_NAME(T, func, funcName, instanceReturner, moduleName) PY_EXPORT_MEMBER_FUNCTION_PTR_AS_STATIC_FUNCTION_LAMBDA(&##T##::##func, funcName, instanceReturner, moduleName)
+#define PY_EXPORT_MEMBER_FUNCTION_NAME(T, func, funcName, moduleName) PY_EXPORT_MEMBER_FUNCTION_PTR(&##T##::##func, funcName, moduleName)
 
 #define PY_EXPORT_TEMPLATE_GLOBAL_FUNCTION_NAME(func, funcName, moduleName, templateParamSeq) cpp_python_embedder::Exporter<#moduleName##_xxh64>::RegisterTemplateFunction<#funcName##_xxh64, _PY_EXPORTER_TEMPLATE_INSTANCES(func, templateParamSeq)>(#funcName)
 #define PY_EXPORT_TEMPLATE_STATIC_FUNCTION_NAME(T, func, funcName, moduleName, templateParamSeq) PY_EXPORT_TEMPLATE_GLOBAL_FUNCTION_NAME(T##::##func, funcName, moduleName, templateParamSeq)
 #define PY_EXPORT_TEMPLATE_MEMBER_FUNCTION_AS_STATIC_FUNCTION_NAME(T, func, funcName, instanceReturner, moduleName, templateParamSeq) cpp_python_embedder::Exporter<#moduleName##_xxh64>::RegisterTemplateMemberFunctionAsStaticFunction<#T###funcName##_xxh64, decltype(&##instanceReturner), &##instanceReturner, _PY_EXPORTER_TEMPLATE_INSTANCES(T##::##func, templateParamSeq)>(#funcName)
 #define PY_EXPORT_TEMPLATE_MEMBER_FUNCTION_AS_STATIC_FUNCTION_LAMBDA_NAME(T, func, funcName, instanceReturner, moduleName, templateParamSeq) static auto T##funcName##moduleName##lambda = instanceReturner; \
 	cpp_python_embedder::Exporter<#moduleName##_xxh64>::RegisterTemplateMemberFunctionAsStaticFunctionLambda<#T###funcName##_xxh64, decltype(&decltype(T##funcName##moduleName##lambda##)::operator()), &decltype(T##funcName##moduleName##lambda##)::operator(), decltype(&##T##funcName##moduleName##lambda), &##T##funcName##moduleName##lambda, _PY_EXPORTER_TEMPLATE_INSTANCES(T##::##func, templateParamSeq)>(#funcName)
-#define PY_EXPORT_TEMPLATE_MEMBER_FUNCTION_NAME(T, func, funcName, moduleName, templateParamSeq) cpp_python_embedder::Exporter<#moduleName##_xxh64>::RegisterTemplateMemberFunction<#T###funcName##_xxh64, T, _PY_EXPORTER_TEMPLATE_INSTANCES(T##::##func, templateParamSeq)>(#funcName)
+#define PY_EXPORT_TEMPLATE_MEMBER_FUNCTION_NAME(T, func, funcName, moduleName, templateParamSeq) cpp_python_embedder::Exporter<#moduleName##_xxh64>::RegisterTemplateMemberFunction<#T###funcName##_xxh64, _PY_EXPORTER_TEMPLATE_INSTANCES(T##::##func, templateParamSeq)>(#funcName)
 
 #define PY_EXPORT_TYPE_NAME(T, typeName, moduleName, fieldSeq) cpp_python_embedder::Exporter<#moduleName##_xxh64>::RegisterType<T, std::integer_sequence<size_t, _PY_EXPORTER_FIELD_OFFSETS(T, fieldSeq)>, _PY_EXPORTER_FIELD_TYPES(T, fieldSeq)>(#typeName, { _PY_EXPORTER_FIELDS(T, fieldSeq) })
 #define PY_EXPORT_TYPE_1FIELD_NAME(T, typeName, moduleName, field) cpp_python_embedder::Exporter<#moduleName##_xxh64>::RegisterType<T, std::integer_sequence<size_t, offsetof(T, field)>, decltype(T##::##field)>(#typeName, {{ #field, cpp_python_embedder::get_member_type_number<decltype(T::##field)>(), offsetof(cpp_python_embedder::PyExportedClass<T>, t) + offsetof(T, field), 0, nullptr }, { nullptr, 0, 0, 0, nullptr }})
@@ -264,8 +274,7 @@ inline namespace python_embedder_detail
 
 	template<typename T>
 	struct is_supported_parameter_type<T, std::enable_if_t<
-		is_supported_field_type_v<remove_const_ref_t<T>> ||
-		(is_supported_custom_type_v<remove_const_ref_t<T>> && (std::is_move_assignable_v<remove_const_ref_t<T>> || std::is_copy_assignable_v<remove_const_ref_t<T>>))
+		is_supported_field_type_v<remove_const_ref_t<T>> || is_supported_custom_type_v<remove_const_ref_t<T>>
 	>> : std::true_type
 	{};
 
@@ -280,8 +289,7 @@ inline namespace python_embedder_detail
 	template<typename T>
 	struct is_supported_return_type<T, std::enable_if_t<
 		std::is_void_v<T> ||
-		std::is_fundamental_v<T> || std::is_same_v<T, const char*> || std::is_same_v<T, std::string> ||
-		(is_supported_custom_type_v<T> && (std::is_move_assignable_v<T> || std::is_copy_assignable_v<T>))
+		std::is_fundamental_v<T> || std::is_same_v<T, const char*> || std::is_same_v<T, std::string> || is_supported_custom_type_v<T>
 	>> : std::true_type
 	{};
 
@@ -482,7 +490,7 @@ public:
 	static void RegisterMemberFunctionAsStaticFunctionLambda(const char* functionName);
 
 
-	template<typename FunctionPtrType, FunctionPtrType FunctionPtr, typename Class>
+	template<typename FunctionPtrType, FunctionPtrType FunctionPtr>
 	static void RegisterMemberFunction(const char* functionName);
 
 
@@ -506,7 +514,7 @@ public:
 	static void RegisterTemplateMemberFunctionAsStaticFunctionLambda(const char* functionName);
 
 
-	template<HashValueType FunctionNameHashValue, typename Class, typename... TemplateInstanceInfos>
+	template<HashValueType FunctionNameHashValue, typename... TemplateInstanceInfos>
 	static void RegisterTemplateMemberFunction(const char* functionName);
 
 
@@ -1196,9 +1204,11 @@ void Exporter<ModuleNameHashValue>::RegisterMemberFunctionAsStaticFunctionLambda
 	
 
 template <HashValueType ModuleNameHashValue>
-template <typename FunctionPtrType, FunctionPtrType FunctionPtr, typename Class>
+template <typename FunctionPtrType, FunctionPtrType FunctionPtr>
 void Exporter<ModuleNameHashValue>::RegisterMemberFunction(const char* functionName)
 {
+	using Class = typename function_types::FunctionTypes<FunctionPtrType>::Class;
+	
 	if (!PyExportedClass<Class>::methods.empty() && PyExportedClass<Class>::methods.back().ml_name == nullptr)
 	{
 		throw std::runtime_error("All member functions must be exported first before its type");
@@ -1327,16 +1337,19 @@ void Exporter<ModuleNameHashValue>::RegisterTemplateMemberFunctionAsStaticFuncti
 	
 
 template <HashValueType ModuleNameHashValue>
-template <HashValueType FunctionNameHashValue, typename Class, typename... TemplateInstanceInfos>
+template <HashValueType FunctionNameHashValue, typename... TemplateInstanceInfos>
 void Exporter<ModuleNameHashValue>::RegisterTemplateMemberFunction(const char* functionName)
 {
+	using Pairs = TypeList<TemplateInstanceInfos...>;
+	constexpr size_t pairCount = std::tuple_size_v<Pairs>;
+	
+	using Class = typename function_types::FunctionTypes<typename std::tuple_element_t<0, Pairs>::FunctionPtrType>::Class;
+	
 	if (!PyExportedClass<Class>::methods.empty() && PyExportedClass<Class>::methods.back().ml_name == nullptr)
 	{
 		throw std::runtime_error("All member functions must be exported first before its type");
 	}
 	
-	using Pairs = TypeList<TemplateInstanceInfos...>;
-	constexpr size_t pairCount = std::tuple_size_v<Pairs>;
 
 	using FunctionMapper = TemplateFunctionDispatcher<FunctionNameHashValue>;
 	auto& functionMap = FunctionMapper::instantiatedFunctions;
