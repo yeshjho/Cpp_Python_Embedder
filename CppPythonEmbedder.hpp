@@ -56,6 +56,10 @@ using xxhash::literals::operator ""_xxh64;
 #define _PY_EXPORTER_FIELD_EXPANDER(_, T, fieldName) _PY_EXPORTER_FIELD(T, fieldName)
 #define _PY_EXPORTER_FIELDS(T, seq) BOOST_PP_SEQ_FOR_EACH(_PY_EXPORTER_FIELD_EXPANDER, T, seq) { nullptr, 0, 0, 0, nullptr }
 
+#define _PY_EXPORTER_ENUMERATOR(E, enumerator) { #enumerator, E##::##enumerator },
+#define _PY_EXPORTER_ENUMERATOR_EXPANDER(_, E, enumerator) _PY_EXPORTER_ENUMERATOR(E, enumerator)
+#define _PY_EXPORTER_ENUMERATORS(E, seq) BOOST_PP_SEQ_FOR_EACH(_PY_EXPORTER_ENUMERATOR_EXPANDER, E, seq) { nullptr, static_cast<E>(0) }
+
 #define _PY_EXPORTER_FIELD_TYPE(T, fieldName) decltype(T::fieldName),
 #define _PY_EXPORTER_FIELD_TYPE_EXPANDER(_, T, fieldName) _PY_EXPORTER_FIELD_TYPE(T, fieldName)
 #define _PY_EXPORTER_HEADS_FIELD_TYPES(T, seq) BOOST_PP_SEQ_FOR_EACH(_PY_EXPORTER_FIELD_TYPE_EXPANDER, T, seq)
@@ -108,6 +112,8 @@ using xxhash::literals::operator ""_xxh64;
 #define PY_EXPORT_TYPE_1FIELD_NAME(T, typeName, moduleName, field) cpp_python_embedder::Exporter<#moduleName##_xxh64>::RegisterType<T, std::integer_sequence<size_t, offsetof(T, field)>, decltype(T##::##field)>(#typeName, {{ #field, cpp_python_embedder::get_member_type_number<decltype(T::##field)>(), offsetof(T, field), 0, nullptr }, { nullptr, 0, 0, 0, nullptr }})
 #define PY_EXPORT_TYPE_0FIELD_NAME(T, typeName, moduleName) cpp_python_embedder::Exporter<#moduleName##_xxh64>::RegisterType<T, std::integer_sequence<size_t>>(#typeName, {{ nullptr, 0, 0, 0, nullptr }})
 
+#define PY_EXPORT_ENUM_NAME(E, enumName, moduleName, enumeratorSeq) cpp_python_embedder::Exporter<#moduleName##_xxh64>::RegisterEnum<E>(#enumName, { _PY_EXPORTER_ENUMERATORS(E, enumeratorSeq) })
+
 #define PY_EXPORT_MODULE_NAME(moduleName, newName) cpp_python_embedder::Exporter<#moduleName##_xxh64>::Export(#newName)
 
 
@@ -130,6 +136,8 @@ using xxhash::literals::operator ""_xxh64;
 #define PY_EXPORT_TYPE_1FIELD(T, moduleName, field) PY_EXPORT_TYPE_1FIELD_NAME(T, T, moduleName, field)
 #define PY_EXPORT_TYPE_0FIELD(T, moduleName) PY_EXPORT_TYPE_0FIELD_NAME(T, T, moduleName)
 
+#define PY_EXPORT_ENUM(E, moduleName, enumeratorSeq) PY_EXPORT_ENUM_NAME(E, E, moduleName, enumeratorSeq)
+
 #define PY_EXPORT_MODULE(moduleName) PY_EXPORT_MODULE_NAME(moduleName, moduleName)
 
 
@@ -143,6 +151,7 @@ namespace cpp_python_embedder
 // TODO: Support template operator overloading (maybe?)
 
 // TODO: Separate files and #include
+// TODO: Use std::apply instead of mp_for_each and get rid of boost
 // (INCREF, DECREF) https://docs.python.org/3/c-api/intro.html#objects-types-and-reference-counts
 // http://edcjones.tripod.com/refcount.html
 
@@ -281,8 +290,8 @@ inline namespace python_embedder_detail
 	{};
 
 	template<typename T>
-	struct is_supported_field_type < T, std::enable_if_t<
-		std::is_fundamental_v<T> || std::is_same_v<T, const char*> || std::is_same_v<T, std::string>
+	struct is_supported_field_type<T, std::enable_if_t<
+		std::is_fundamental_v<T> || std::is_enum_v<T> || std::is_same_v<T, const char*> || std::is_same_v<T, std::string>
 	>> : std::true_type
 	{};
 
@@ -311,8 +320,7 @@ inline namespace python_embedder_detail
 
 	template<typename T>
 	struct is_supported_return_type<T, std::enable_if_t<
-		std::is_void_v<T> || std::is_fundamental_v<T> || 
-		std::is_same_v<T, const char*> || std::is_same_v<T, std::string> || 
+		std::is_void_v<T> || is_supported_field_type_v<T> || 
 		is_supported_custom_type_v<remove_const_ref_t<T>> || is_supported_custom_type_v<std::remove_reference_t<T>>
 	>> : std::true_type
 	{};
@@ -328,6 +336,14 @@ inline namespace python_embedder_detail
 		using FunctionPtrType = FunctionPtrType_;
 		static constexpr FunctionPtrType functionPtr = FunctionPtr_;
 		static constexpr HashValueType templateParametersHashValue = TemplateParametersHashValue_;
+	};
+
+
+	template<typename E>
+	struct EnumeratorInfo
+	{
+		const char* name;
+		E value;
 	};
 
 	
@@ -577,6 +593,10 @@ public:
 	static void RegisterType(const char* typeName, std::initializer_list<PyMemberDef> members);
 
 
+	template<typename E>
+	static void RegisterEnum(const char* enumName, std::initializer_list<EnumeratorInfo<E>> enumerators);
+
+
 	static void Export(const std::string& moduleName_);
 
 
@@ -588,6 +608,7 @@ private:
 	
 	inline static std::vector<PyMethodDef> methods;
 	inline static std::vector<PyTypeObject*> types;
+	inline static std::vector<std::string> enums;
 	
 	inline static PyModuleDef moduleDef;
 };
@@ -609,7 +630,7 @@ template <typename T>
 PyObject* PyExportedClass<T>::CustomNew(PyTypeObject* type, [[maybe_unused]] PyObject* args, [[maybe_unused]] PyObject* keywords)
 {
 	PyExportedClass* const self = reinterpret_cast<PyExportedClass*>(type->tp_alloc(type, 0));
-	self->pT = new T;
+	self->pT = new(_NORMAL_BLOCK, __FILE__, __LINE__) T;
 	self->isOwner = true;
 
 	return reinterpret_cast<PyObject*>(self);
@@ -621,6 +642,11 @@ template <typename T>
 template <typename Offsets, typename ... FieldTypes>
 int PyExportedClass<T>::CustomInit(PyObject* self_, PyObject* args, [[maybe_unused]] PyObject* keywords)
 {
+	if (PyTuple_Size(args) == 0)
+	{
+		return 1;
+	}
+	
 	PyExportedClass* const self = reinterpret_cast<PyExportedClass*>(self_);
 
 	using FieldTypeTuple = TypeList<FieldTypes...>;
@@ -691,11 +717,9 @@ int Converter<T>::ParseValuePtr(PyObject* pyObject, T** pT)
 template <typename T>
 PyObject* Converter<T>::BuildValue(T* pT)
 {
-	PyExportedClass<T>* const newObj = PyObject_New(PyExportedClass<T>, &PyExportedClass<T>::typeInfo);
-	PyObject* const object = reinterpret_cast<PyObject*>(newObj);
-	PyObject_Init(object, &PyExportedClass<T>::typeInfo);
-	newObj->pT = new T{ *pT };
-	newObj->isOwner = true;
+	PyObject* const object = PyObject_CallObject(reinterpret_cast<PyObject*>(&PyExportedClass<T>::typeInfo), nullptr);
+	PyExportedClass<T>* const newObj = reinterpret_cast<PyExportedClass<T>*>(object);
+	*newObj->pT = *pT;
 
 	// TODO: To support custom objects, manually parse the arguments and use pyobject_callobject
 
@@ -776,6 +800,10 @@ constexpr const char* python_embedder_detail::get_argument_type_format_string(co
 	else if constexpr (std::is_same_v<T, const char*>)
 	{
 		return "s";
+	}
+	else if constexpr (std::is_enum_v<T>)
+	{
+		return get_argument_type_format_string<std::underlying_type_t<T>>();
 	}
 	else
 	{
@@ -867,7 +895,7 @@ constexpr bool python_embedder_detail::parse_arguments(PyObject* args, Parameter
 			PyObject* const pyObjectValue = PyTuple_GetItem(args, i);
 			TempVarType<NthParameterType> value;
 
-			if constexpr (std::is_fundamental_v<NthParameterType> || std::is_same_v<NthParameterType, const char*>)
+			if constexpr (std::is_fundamental_v<NthParameterType> || std::is_enum_v<NthParameterType> || std::is_same_v<NthParameterType, const char*>)
 			{
 				const char* format = get_argument_type_format_string<NthParameterType>();
 
@@ -927,7 +955,7 @@ PyObject* python_embedder_detail::execute_get_return_value(const ParameterTypeTu
 	{
 		ReturnType returnValue = std::apply(FunctionPtr, arguments);
 
-		if constexpr (std::is_fundamental_v<ReturnType> || std::is_same_v<ReturnType, const char*>)
+		if constexpr (std::is_fundamental_v<ReturnType> || std::is_enum_v<ReturnType> || std::is_same_v<ReturnType, const char*>)
 		{
 			const char* format = get_argument_type_format_string<ReturnType>();
 
@@ -976,7 +1004,7 @@ PyObject* python_embedder_detail::execute_and_get_return_value_ref_possible(cons
 	{
 		ReturnType returnValue = std::apply(FunctionPtr, arguments);
 
-		if constexpr (std::is_fundamental_v<ReturnType> || std::is_same_v<ReturnType, const char*>)
+		if constexpr (std::is_fundamental_v<ReturnType> || std::is_enum_v<ReturnType> || std::is_same_v<ReturnType, const char*>)
 		{
 			const char* format = get_argument_type_format_string<ReturnType>();
 
@@ -1515,6 +1543,34 @@ void Exporter<ModuleNameHashValue>::RegisterType(const char* typeName, std::init
 
 	
 template <HashValueType ModuleNameHashValue>
+template <typename E>
+void Exporter<ModuleNameHashValue>::RegisterEnum(const char* enumName, std::initializer_list<EnumeratorInfo<E>> enumerators)
+{
+	static_assert(std::is_enum_v<E>);
+
+	std::string enumDeclaration = "class ";
+	enumDeclaration += enumName;
+	enumDeclaration += "(IntEnum):\n";
+	for (EnumeratorInfo<E> enumerator : enumerators)
+	{
+		if (enumerator.name == nullptr)
+		{
+			break;
+		}
+
+		enumDeclaration += "\t";
+		enumDeclaration += enumerator.name;
+		enumDeclaration += " = ";
+		enumDeclaration += std::to_string(static_cast<std::underlying_type_t<E>>(enumerator.value));
+		enumDeclaration += "\n";
+	}
+	
+	enums.push_back(std::move(enumDeclaration));
+}
+
+
+
+template <HashValueType ModuleNameHashValue>
 void Exporter<ModuleNameHashValue>::Export(const std::string& moduleName_)
 {
 	moduleName = moduleName_;
@@ -1549,6 +1605,11 @@ PyObject* Exporter<ModuleNameHashValue>::Init()
 		}
 		Py_INCREF(type);
 		PyModule_AddType(pyModule, type);
+	}
+	PyRun_SimpleString("from enum import IntEnum");
+	for (const std::string& enumDeclaration : enums)
+	{
+		PyRun_SimpleString(enumDeclaration.c_str());
 	}
 
 	return pyModule;
