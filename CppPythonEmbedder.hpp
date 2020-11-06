@@ -461,7 +461,7 @@ inline namespace python_embedder_detail
 
 
 	template<typename T>
-	[[nodiscard]] static constexpr const char* get_argument_type_format_string(bool treatCharAsNumber = false);
+	[[nodiscard]] static constexpr const char* get_type_format_string(bool treatCharAsNumber = false, bool isReturnType = false);
 
 	template<typename T>
 	[[nodiscard]] static constexpr int get_member_type_number();
@@ -660,7 +660,7 @@ int PyExportedClass<T>::CustomInit(PyObject* self_, PyObject* args, [[maybe_unus
 			PyObject* const pyObjectValue = PyTuple_GetItem(args, i);
 			TempVarType<NthFieldType> value;
 
-			const char* format = get_argument_type_format_string<NthFieldType>(true);
+			const char* format = get_type_format_string<NthFieldType>(true);
 
 			if (!PyArg_Parse(pyObjectValue, format, &value))
 			{
@@ -742,11 +742,11 @@ PyObject* Converter<T>::BuildValuePtr(T* pT)
 
 
 template <typename T>
-constexpr const char* python_embedder_detail::get_argument_type_format_string(const bool treatCharAsNumber)
+constexpr const char* python_embedder_detail::get_type_format_string(const bool treatCharAsNumber, const bool isReturnType)
 {
 	if constexpr (std::is_same_v<T, bool>)
 	{
-		return "p";
+		return isReturnType ? "i" : "p";
 	}
 	else if constexpr (std::is_same_v<T, char>)
 	{
@@ -803,7 +803,7 @@ constexpr const char* python_embedder_detail::get_argument_type_format_string(co
 	}
 	else if constexpr (std::is_enum_v<T>)
 	{
-		return get_argument_type_format_string<std::underlying_type_t<T>>();
+		return get_type_format_string<std::underlying_type_t<T>>(treatCharAsNumber, isReturnType);
 	}
 	else
 	{
@@ -897,7 +897,7 @@ constexpr bool python_embedder_detail::parse_arguments(PyObject* args, Parameter
 
 			if constexpr (std::is_fundamental_v<NthParameterType> || std::is_enum_v<NthParameterType> || std::is_same_v<NthParameterType, const char*>)
 			{
-				const char* format = get_argument_type_format_string<NthParameterType>();
+				const char* format = get_type_format_string<NthParameterType>();
 
 				if (!PyArg_Parse(pyObjectValue, format, &value))
 				{
@@ -953,11 +953,11 @@ PyObject* python_embedder_detail::execute_get_return_value(const ParameterTypeTu
 	}
 	else
 	{
-		ReturnType returnValue = std::apply(FunctionPtr, arguments);
+		TempVarType<ReturnType> returnValue = static_cast<TempVarType<ReturnType>>(std::apply(FunctionPtr, arguments));
 
 		if constexpr (std::is_fundamental_v<ReturnType> || std::is_enum_v<ReturnType> || std::is_same_v<ReturnType, const char*>)
 		{
-			const char* format = get_argument_type_format_string<ReturnType>();
+			const char* format = get_type_format_string<ReturnType>(false, true);
 
 			return Py_BuildValue(format, returnValue);
 		}
@@ -1002,11 +1002,11 @@ PyObject* python_embedder_detail::execute_and_get_return_value_ref_possible(cons
 	}
 	else
 	{
-		ReturnType returnValue = std::apply(FunctionPtr, arguments);
+		TempVarType<ReturnType> returnValue = static_cast<TempVarType<ReturnType>>(std::apply(FunctionPtr, arguments));
 
 		if constexpr (std::is_fundamental_v<ReturnType> || std::is_enum_v<ReturnType> || std::is_same_v<ReturnType, const char*>)
 		{
-			const char* format = get_argument_type_format_string<ReturnType>();
+			const char* format = get_type_format_string<ReturnType>(false, true);
 
 			return Py_BuildValue(format, returnValue);
 		}
