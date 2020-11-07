@@ -99,7 +99,7 @@ You'll be using the macros only, since a lot of information should be passed int
     - `instanceReturner`: The name(non-lambda) of the function / The function(lambda) that returns an instance type of `T*`.
 
 - Note on `_AS_STATIC_FUNCTION` macros
-    - When you call the exported function in Python, you should pass an extra tuple as the first argument of the function, which will be the arguments of the `instanceReturner`.
+    - When you call the exported function in Python, you should pass an extra tuple as the first argument of the function, which will be the arguments of the `instanceReturner`. <br /> **Ex)** `exported_function((instanceReturnerArg0,), arg0, arg1)`
     - They're useful when the type couldn't be exported, or the instance can be moved around the memory.
 
 #### Operators
