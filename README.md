@@ -89,7 +89,7 @@ You'll be using the macros only, since a lot of information should be passed int
     - `PY_EXPORT_GLOBAL_FUNCTION(func, moduleName)`: Exports a normal global function.
     - `PY_EXPORT_STATIC_FUNCTION(T, func, moduleName)`: Exports a normal static function. Just a redirection to `PY_EXPORT_GLOBAL_FUNCTION`.
     - `PY_EXPORT_MEMBER_FUNCTION_AS_STATIC_FUNCTION(T, func, instanceReturner, moduleName)`: Exports a member function as a static function. `instanceReturner` will provide the required instance when the function is run.
-    - `PY_EXPORT_MEMBER_FUNCTION_AS_STATIC_FUNCTION_LAMBDA(T, func, instanceReturner, moduleName)`: Same as above, but the `instanceReturner` is a lambda declared and defined inside the macro. <br /> Ex) `PY_EXPORT_MEMBER_FUNCTION_AS_STATIC_FUNCTION_LAMBDA(Vec3, normalize, []() { static Vec3 v; return &v; }, test);`
+    - `PY_EXPORT_MEMBER_FUNCTION_AS_STATIC_FUNCTION_LAMBDA(T, func, instanceReturner, moduleName)`: Same as above, but the `instanceReturner` is a lambda declared and defined inside the macro. <br /> **Ex)** `PY_EXPORT_MEMBER_FUNCTION_AS_STATIC_FUNCTION_LAMBDA(Vec3, normalize, []() { static Vec3 v; return &v; }, test);`
     - `PY_EXPORT_MEMBER_FUNCTION(T, func, moduleName)`: Exports a normal member function. Note that the type should be exported later.
 
 - Parameters
@@ -121,10 +121,10 @@ You'll be using the macros only, since a lot of information should be passed int
     - All the macros of the [Basics](#basics) part have their template counterparts. (Prefixed with `_TEMPLATE`)
 
 - Additional Parameters
-    - `templateParamSeq`: The sequence of parenthesized template parameters for instantiating the template function. <br /> Ex) `((int, float, double))((char, std::string, std::vector<short>))`
+    - `templateParamSeq`: The sequence of parenthesized template parameters for instantiating the template function. <br /> **Ex)** `((int, float, double))((char, std::string, std::vector<short>))`
 
 - Note
-    - When you call the exported function in Python, you should pass an extra string as the first argument of the function, which will be used for choosing which instantiated version will be called. The string should exactly match with what you've passed in as the element of the `templateParamSeq`. <br /> Ex) `some_func("char, std::string, std::vector<short>", arg0, arg1)`
+    - When you call the exported function in Python, you should pass an extra string as the first argument of the function, which will be used for choosing which instantiated version will be called. The string should exactly match with what you've passed in as the element of the `templateParamSeq`. <br /> **Ex)** `some_func("char, std::string, std::vector<short>", arg0, arg1)`
     - Template operators are not supported yet, although you can export by passing instantiated versions.
 
 #### Pointer-Takers
@@ -137,7 +137,7 @@ You'll be using the macros only, since a lot of information should be passed int
     - `instanceReturnerPtr`: A pointer to the instance-returning function.
 
 - Note
-    - It is useful when you try to export an overloaded function. <br /> Ex) `PY_EXPORT_MEMBER_FUNCTION_PTR(static_cast<float(T::*)(int) const>(&T::OverloadedFunc), add2, test)`
+    - It is useful when you try to export an overloaded function. <br /> **Ex)** `PY_EXPORT_MEMBER_FUNCTION_PTR(static_cast<float(T::*)(int) const>(&T::OverloadedFunc), add2, test)`
 
 ### Types
 #### Classes
@@ -149,7 +149,7 @@ You'll be using the macros only, since a lot of information should be passed int
 - Parameters
     - `T`: The name of the class.
     - `moduleName`: The name of the module the function will be exported to.
-    - `fieldSeq`: The sequence of fields to be exposed. <br /> Ex) `(field1)(field2)(field3)`
+    - `fieldSeq`: The sequence of fields to be exposed. <br /> **Ex)** `(field1)(field2)(field3)`
     - `field`: The name of the field to be exposed. Note that it's not a sequence.
 
 - Note
@@ -163,7 +163,7 @@ You'll be using the macros only, since a lot of information should be passed int
 - Parameters
     - `E`: The name of the enum.
     - `moduleName`: The name of the module the function will be exported to.
-    - `fieldSeq`: The sequence of enumerators to be exposed. <br /> Ex) `(ENUMERATOR1)(ENUMERATOR2)`
+    - `fieldSeq`: The sequence of enumerators to be exposed. <br /> **Ex)** `(ENUMERATOR1)(ENUMERATOR2)`
 
 - Note
     - It isn't required that all of the enumerators to be exposed. The listed enumerators will be accessible in Python, so if you don't want it to be, don't list it.
