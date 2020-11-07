@@ -88,8 +88,9 @@ using xxhash::literals::operator ""_xxh64;
 
 #define PY_EXPORT_GLOBAL_FUNCTION_PTR(funcPtr, funcName, moduleName) cpp_python_embedder::Exporter<#moduleName##_xxh64>::RegisterFunction<decltype(funcPtr), funcPtr>(#funcName)
 #define PY_EXPORT_STATIC_FUNCTION_PTR(funcPtr, funcName, moduleName) PY_EXPORT_GLOBAL_FUNCTION_PTR(funcPtr, funcName, moduleName)
-#define PY_EXPORT_MEMBER_FUNCTION_TPR_AS_STATIC_FUNCTION_PTR(funcPtr, funcName, instanceReturnerPtr, moduleName) cpp_python_embedder::Exporter<#moduleName##_xxh64>::RegisterMemberFunctionAsStaticFunction<decltype(funcPtr), funcPtr, decltype(instanceReturnerPtr), instanceReturnerPtr>(#funcName)
-#define PY_EXPORT_MEMBER_FUNCTION_PTR_AS_STATIC_FUNCTION(funcPtr, funcName, instanceReturner, moduleName) PY_EXPORT_MEMBER_FUNCTION_TPR_AS_STATIC_FUNCTION_PTR(funcPtr, funcName, &##instanceReturner, moduleName)
+#define PY_EXPORT_MEMBER_FUNCTION_PTR_AS_STATIC_FUNCTION_PTR(funcPtr, funcName, instanceReturnerPtr, moduleName) cpp_python_embedder::Exporter<#moduleName##_xxh64>::RegisterMemberFunctionAsStaticFunction<decltype(funcPtr), funcPtr, decltype(instanceReturnerPtr), instanceReturnerPtr>(#funcName)
+#define PY_EXPORT_MEMBER_FUNCTION_PTR_AS_STATIC_FUNCTION(funcPtr, funcName, instanceReturner, moduleName) PY_EXPORT_MEMBER_FUNCTION_PTR_AS_STATIC_FUNCTION_PTR(funcPtr, funcName, &##instanceReturner, moduleName)
+#define PY_EXPORT_MEMBER_FUNCTION_AS_STATIC_FUNCTION_PTR(func, funcName, instanceReturnerPtr, moduleName) PY_EXPORT_MEMBER_FUNCTION_PTR_AS_STATIC_FUNCTION_PTR(&##func, funcName, instanceReturnerPtr, moduleName)
 #define PY_EXPORT_MEMBER_FUNCTION_PTR_AS_STATIC_FUNCTION_LAMBDA(funcPtr, funcName, instanceReturner, moduleName) static auto T##funcName##moduleName##lambda = instanceReturner; \
 	cpp_python_embedder::Exporter<#moduleName##_xxh64>::RegisterMemberFunctionAsStaticFunctionLambda<decltype(funcPtr), funcPtr, decltype(&decltype(T##funcName##moduleName##lambda##)::operator()), &decltype(T##funcName##moduleName##lambda##)::operator(), decltype(&##T##funcName##moduleName##lambda), &##T##funcName##moduleName##lambda>(#funcName)
 #define PY_EXPORT_MEMBER_FUNCTION_PTR(funcPtr, funcName, moduleName) cpp_python_embedder::Exporter<#moduleName##_xxh64>::RegisterMemberFunction<decltype(funcPtr), funcPtr>(#funcName)
@@ -123,8 +124,8 @@ using xxhash::literals::operator ""_xxh64;
 #define PY_EXPORT_MEMBER_FUNCTION_AS_STATIC_FUNCTION_LAMBDA(T, func, instanceReturner, moduleName) PY_EXPORT_MEMBER_FUNCTION_AS_STATIC_FUNCTION_LAMBDA_NAME(T, func, func, instanceReturner, moduleName)
 #define PY_EXPORT_MEMBER_FUNCTION(T, func, moduleName) PY_EXPORT_MEMBER_FUNCTION_NAME(T, func, func, moduleName)
 
-#define PY_EXPORT_GLOBAL_OPERATOR(func, operatorType, moduleName) cpp_python_embedder::Exporter<#moduleName##_xxh64>::RegisterGlobalOperator<decltype(&##func), &##func, operatorType>();
-#define PY_EXPORT_MEMBER_OPERATOR(T, func, operatorType, moduleName) cpp_python_embedder::Exporter<#moduleName##_xxh64>::RegisterMemberOperator<decltype(&##T##::##func), &##T##::##func, T, operatorType>();
+#define PY_EXPORT_GLOBAL_OPERATOR(func, operatorType, moduleName) cpp_python_embedder::Exporter<#moduleName##_xxh64>::RegisterGlobalOperator<decltype(&##func), &##func, operatorType>()
+#define PY_EXPORT_MEMBER_OPERATOR(T, func, operatorType, moduleName) cpp_python_embedder::Exporter<#moduleName##_xxh64>::RegisterMemberOperator<decltype(&##T##::##func), &##T##::##func, T, operatorType>()
 
 #define PY_EXPORT_TEMPLATE_GLOBAL_FUNCTION(func, moduleName, templateParamSeq) PY_EXPORT_TEMPLATE_GLOBAL_FUNCTION_NAME(func, func, moduleName, templateParamSeq)
 #define PY_EXPORT_TEMPLATE_STATIC_FUNCTION(T, func, moduleName, templateParamSeq) PY_EXPORT_TEMPLATE_STATIC_FUNCTION_NAME(T, func, func, moduleName, templateParamSeq)
@@ -144,7 +145,6 @@ using xxhash::literals::operator ""_xxh64;
 
 namespace cpp_python_embedder
 {
-// TODO: Support reference as parameter & return type
 // TODO: Support user-defined data types as field
 // TODO: Support array as field (python list)
 // TODO: Support more operator overloading https://docs.python.org/3/c-api/typeobj.html#number-object-structures
