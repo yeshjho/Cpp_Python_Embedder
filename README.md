@@ -99,7 +99,7 @@ You'll be using the macros only, since a lot of information should be passed int
     - `instanceReturner`: The name(non-lambda) of the function / The function(lambda) that returns an instance type of `T*`.
 
 - Note on `_AS_STATIC_FUNCTION` macros
-    - When you call the exported function in Python, you should pass an extra tuple as the first argument of the function, which will be the arguments of the `instanceReturner`.
+    - When you call the exported function in Python, you should pass an extra tuple as the first argument of the function, which will be the arguments of the `instanceReturner`. <br /> **Ex)** `exported_function((instanceReturnerArg0,), arg0, arg1)`
     - They're useful when the type couldn't be exported, or the instance can be moved around the memory.
 
 #### Operators
@@ -118,7 +118,7 @@ You'll be using the macros only, since a lot of information should be passed int
 
 #### Templates
 - Macros
-    - All the macros of the [Basics](#basics) part have their template counterparts. (Prefixed with `_TEMPLATE`)
+    - All the macros of the [Basics](#basics) part have their template counterparts. (Prefixed with `TEMPLATE_`)
 
 - Additional Parameters
     - `templateParamSeq`: The sequence of parenthesized template parameters for instantiating the template function. <br /> **Ex)** `((int, float, double))((char, std::string, std::vector<short>))`
@@ -177,35 +177,76 @@ All the macros above but operators have a counterpart for giving a different nam
 
 
 
-## Limitations
+## Type Requirements
+### Classes
+#### Class<a name="class"></a>
+The class itself should be satisfy the followings:
+- default constructible
+- copy assignable
+- copy constructible
+
+#### Fields<a name="fields"></a>
+Plus, all of the **exposed field**s should be one of:
+- fundamental type other than `long double`
+- enum
+- const char*
+- std::string
+
+**Note**: `char` will be treated as a number, not a character.
+
+### Functions
+#### Parameters
+All of the function's parameters should be one of:
+- [supported field types](#fields)
+- const reference version of supported fields types
+- [supported class types](#class)
+- const reference version of supported class tyeps
+- reference version of supported class types
+
+#### Return Type
+The function's return type should be one of:
+- void
+- [supported field types](#fields)
+- [supported class types](#class)
+- const reference version of supported class tyeps
+- reference version of supported class types
+
+**Note**: `char` will be treated as a charater, not a number.
+
+
+
+## Ordering Requirements
+### Member Functions
+- All member functions must be exported before its owning class.
+
+### Module
+- All elements in a module must be exported before the module.
+
+
+## Complete Example
+```c++
 (TODO)
-<!--
- * Limitations:
- *	1. Parameter Types and Return Types should be one of:
- *		- bool
- *		- char 
- *		- unsigned char
- *		- short
- *		- unsigned short
- *		- int
- *		- unsigned int
- *		- long
- *		- unsigned long
- *		- long long
- *		- unsigned long long
- *		- float
- *		- double
- *		- const char*
- *		- std::string
- *		- Custom types Registered by the user
- <It assumes python will call it with a single character, not a number>
- *		
- *	2. All Fields of a Custom Type should be:
- *		- Publicly Accessible
- *		- Of a Type One of the Types listed above, EXCEPT:
- *			- std::string
- *			- Custom Types
- *		<Note that a member of char is treated as a number rather than a character at this context>
- *
- *	3. All Methods of a Custom Type should be Registered before its Type is Registered
--->
+```
+
+
+## Future Plan
+### Issues
+- Resolve memory leak issue
+
+### Easier Debugging
+- More thorough error check
+
+### Feature Expansion
+#### Classes
+- Support user defined data types as fields
+- Support arrays as fields
+- Support template (maybe?)
+
+
+#### Operators
+- Support comparison operators
+- Support call(`()`) and subscript(`[]`) opeartors
+- Support template (maybe?)
+
+#### Dependencies
+- Remove boost dependency
