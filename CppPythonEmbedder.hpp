@@ -904,9 +904,16 @@ constexpr int python_embedder_detail::get_member_type_number()
 template<typename ParameterTypeTuple, size_t... ArgumentIndices>
 constexpr bool python_embedder_detail::parse_arguments(PyObject* args, ParameterTypeTuple& parsedArguments, std::index_sequence<ArgumentIndices...>)
 {
-	std::vector<bool> parseResults = { parse_argument_helper<ParameterTypeTuple, ArgumentIndices>(args, parsedArguments)... };
-	
-	return std::all_of(parseResults.begin(), parseResults.end(), [](auto e) { return e; });
+	if constexpr (sizeof...(ArgumentIndices) == 0)
+	{
+		return true;
+	}
+	else
+	{
+		const bool parseResults[] = { parse_argument_helper<ParameterTypeTuple, ArgumentIndices>(args, parsedArguments)... };
+
+		return std::all_of(std::begin(parseResults), std::end(parseResults), [](auto e) { return e; });
+	}
 }
 
 
@@ -1069,9 +1076,16 @@ bool python_embedder_detail::parse_field_helper(ExportedClass* self, PyObject* a
 template <typename FieldTypeTuple, typename ExportedClass, typename Offsets, size_t... FieldIndices>
 bool python_embedder_detail::parse_fields(ExportedClass* self, PyObject* args, std::index_sequence<FieldIndices...>)
 {
-	std::vector<bool> parseResults = { parse_field_helper<FieldTypeTuple, ExportedClass, Offsets, FieldIndices>(self, args)... };
+	if constexpr (sizeof...(FieldIndices) == 0)
+	{
+		return true;
+	}
+	else
+	{
+		const bool parseResults[] = { parse_field_helper<FieldTypeTuple, ExportedClass, Offsets, FieldIndices>(self, args)... };
 
-	return std::all_of(parseResults.begin(), parseResults.end(), [](auto e) { return e; });
+		return std::all_of(std::begin(parseResults), std::end(parseResults), [](auto e) { return e; });
+	}
 }
 
 	
