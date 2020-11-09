@@ -38,8 +38,6 @@
 #include <unordered_map>
 #include <vector>
 
-#include <boost/mp11/algorithm.hpp>  // mp_for_each, mp_iota_c
-
 #include <boost/preprocessor/seq/for_each.hpp>
 #include <boost/preprocessor/seq/pop_back.hpp>
 #include <boost/preprocessor/seq/reverse.hpp>
@@ -387,10 +385,10 @@ inline namespace python_embedder_detail
 	
 	
 	template<typename RefToPtrParameterTuple, typename ParameterTuple, size_t... Indices>
-	ParameterTuple restore_ref_helper(const RefToPtrParameterTuple& params, std::index_sequence<Indices...>);
+	[[nodiscard]] ParameterTuple restore_ref_helper(const RefToPtrParameterTuple& params, std::index_sequence<Indices...>);
 	
 	template<typename RefToPtrParameterTuple, typename ParameterTuple>
-	ParameterTuple restore_ref(const RefToPtrParameterTuple& params) { return restore_ref_helper<RefToPtrParameterTuple, ParameterTuple>(params, std::make_index_sequence<std::tuple_size_v<ParameterTuple>>()); }
+	[[nodiscard]] ParameterTuple restore_ref(const RefToPtrParameterTuple& params) { return restore_ref_helper<RefToPtrParameterTuple, ParameterTuple>(params, std::make_index_sequence<std::tuple_size_v<ParameterTuple>>()); }
 	
 
 	template<typename... Args>
@@ -399,7 +397,7 @@ inline namespace python_embedder_detail
 	
 
 	template<typename T, T... Numbers>
-	constexpr T get_nth_element(std::integer_sequence<T, Numbers...>, T i)
+	[[nodiscard]] constexpr T get_nth_element(std::integer_sequence<T, Numbers...>, T i)
 	{
 		constexpr T arr[] = { Numbers... };
 		return arr[i];
@@ -468,28 +466,67 @@ inline namespace python_embedder_detail
 
 	
 
-	template<size_t ArgumentCount, typename ParameterTypeTuple>
-	constexpr bool parse_arguments(PyObject* args, ParameterTypeTuple& parsedArguments);
+	template<typename ParameterTypeTuple, size_t i>
+	[[nodiscard]] bool parse_argument_helper(PyObject* args, ParameterTypeTuple& parsedArguments);
+	
+	template<typename ParameterTypeTuple, size_t... ArgumentIndices>
+	[[nodiscard]] constexpr bool parse_arguments(PyObject* args, ParameterTypeTuple& parsedArguments, std::index_sequence<ArgumentIndices...>);
+
 
 	template<typename FunctionPtrType, FunctionPtrType FunctionPtr, typename ReturnType, typename ParameterTypeTuple>
-	PyObject* execute_get_return_value(const ParameterTypeTuple& arguments);
+	[[nodiscard]] PyObject* execute_get_return_value(const ParameterTypeTuple& arguments);
 
 	template<typename FunctionPtrType, FunctionPtrType FunctionPtr, typename ReturnType, typename ClassReferenceType, typename ParameterTypeTuple, typename InstanceType>
-	PyObject* execute_and_get_return_value_ref_possible(const ParameterTypeTuple& arguments, InstanceType* pInstance);
+	[[nodiscard]] PyObject* execute_and_get_return_value_ref_possible(const ParameterTypeTuple& arguments, InstanceType* pInstance);
 
+
+	template<typename FieldTypeTuple, typename ExportedClass, typename Offsets, size_t i>
+	[[nodiscard]] bool parse_field_helper(ExportedClass* self, PyObject* args);
+
+	template<typename FieldTypeTuple, typename ExportedClass, typename Offsets, size_t... FieldIndices>
+	[[nodiscard]] bool parse_fields(ExportedClass* self, PyObject* args, std::index_sequence<FieldIndices...>);
+	
 	
 
 	template<typename FunctionPtrType, FunctionPtrType FunctionPtr>
-	auto get_function_replicated_function();
+	[[nodiscard]] auto get_function_replicated_function();
 
 	template<typename FunctionPtrType, FunctionPtrType FunctionPtr, typename InstanceReturnFunctionType, InstanceReturnFunctionType InstanceReturnFunction>
-	auto get_member_function_as_static_function_replicated_function();
+	[[nodiscard]] auto get_member_function_as_static_function_replicated_function();
 	
 	template<typename FunctionPtrType, FunctionPtrType FunctionPtr, typename InstanceReturnFunctionType, InstanceReturnFunctionType InstanceReturnFunction, typename LambdaPtrType, LambdaPtrType LambdaPtr>
-	auto get_member_function_as_static_function_lambda_replicated_function();
+	[[nodiscard]] auto get_member_function_as_static_function_lambda_replicated_function();
 
 	template<typename FunctionPtrType, FunctionPtrType FunctionPtr, typename Class>
-	auto get_member_function_replicated_function();
+	[[nodiscard]] auto get_member_function_replicated_function();
+
+
+	
+	template<typename Pairs, HashValueType FunctionNameHashValue, size_t i>
+	void template_function_map_register_helper(std::unordered_map<HashValueType, PyObject* (*)(PyObject*, PyObject*)>& functionMap);
+
+	template<typename Pairs, HashValueType FunctionNameHashValue, typename InstanceReturnFunctionType, InstanceReturnFunctionType InstanceReturnFunction, size_t i>
+	void template_member_function_as_static_function_map_register_helper(std::unordered_map<HashValueType, PyObject* (*)(PyObject*, PyObject*)>& functionMap);
+
+	template<typename Pairs, HashValueType FunctionNameHashValue, typename InstanceReturnFunctionType, InstanceReturnFunctionType InstanceReturnFunction, typename LambdaPtrType, LambdaPtrType LambdaPtr, size_t i>
+	void template_member_function_as_static_function_lambda_map_register_helper(std::unordered_map<HashValueType, PyObject* (*)(PyObject*, PyObject*)>& functionMap);
+
+	template<typename Pairs, HashValueType FunctionNameHashValue, typename Class, size_t i>
+	void template_member_function_map_register_helper(std::unordered_map<HashValueType, PyObject* (*)(PyObject*, PyObject*)>& functionMap);
+	
+	
+	template<typename Pairs, HashValueType FunctionNameHashValue, size_t... Indices>
+	void template_function_register_to_map(std::unordered_map<HashValueType, PyObject* (*)(PyObject*, PyObject*)>& functionMap, std::index_sequence<Indices...>);
+
+	template<typename Pairs, HashValueType FunctionNameHashValue, typename InstanceReturnFunctionType, InstanceReturnFunctionType InstanceReturnFunction, size_t... Indices>
+	void template_member_function_as_static_function_register_to_map(std::unordered_map<HashValueType, PyObject* (*)(PyObject*, PyObject*)>& functionMap, std::index_sequence<Indices...>);
+
+	template<typename Pairs, HashValueType FunctionNameHashValue, typename InstanceReturnFunctionType, InstanceReturnFunctionType InstanceReturnFunction, typename LambdaPtrType, LambdaPtrType LambdaPtr, size_t... Indices>
+	void template_member_function_as_static_function_lambda_register_to_map(std::unordered_map<HashValueType, PyObject* (*)(PyObject*, PyObject*)>& functionMap, std::index_sequence<Indices...>);
+
+	template<typename Pairs, HashValueType FunctionNameHashValue, typename Class, size_t... Indices>
+	void template_member_function_register_to_map(std::unordered_map<HashValueType, PyObject* (*)(PyObject*, PyObject*)>& functionMap, std::index_sequence<Indices...>);
+
 	
 
 	template<typename FunctionPtrType, FunctionPtrType FunctionPtr, typename ReturnType, size_t ParameterCount, typename RefToPtrParameterTypeTuple, typename ParameterTypeTuple>
@@ -652,27 +689,7 @@ int PyExportedClass<T>::CustomInit(PyObject* self_, PyObject* args, [[maybe_unus
 	using FieldTypeTuple = TypeList<FieldTypes...>;
 	constexpr size_t fieldCount = std::tuple_size_v<FieldTypeTuple>;
 
-	bool parseResult = true;
-	boost::mp11::mp_for_each<boost::mp11::mp_iota_c<fieldCount>>([&](auto i)
-		{
-			using NthFieldType = std::tuple_element_t<i, FieldTypeTuple>;
-
-			PyObject* const pyObjectValue = PyTuple_GetItem(args, i);
-			TempVarType<NthFieldType> value;
-
-			const char* format = get_type_format_string<NthFieldType>(true);
-
-			if (!PyArg_Parse(pyObjectValue, format, &value))
-			{
-				parseResult = false;
-				return;
-			}
-
-			new (reinterpret_cast<char*>(self->pT) + get_nth_element<size_t>(Offsets{}, i)) NthFieldType(static_cast<NthFieldType>(value));
-		}
-	);
-
-	if (!parseResult)
+	if (!parse_fields<FieldTypeTuple, PyExportedClass, Offsets>(self, args, std::make_index_sequence<fieldCount>()))
 	{
 		return -1;
 	}
@@ -884,60 +901,60 @@ constexpr int python_embedder_detail::get_member_type_number()
 
 
 
-template <size_t ArgumentCount, typename ParameterTypeTuple>
-constexpr bool python_embedder_detail::parse_arguments(PyObject* args, ParameterTypeTuple& parsedArguments)
+template<typename ParameterTypeTuple, size_t... ArgumentIndices>
+constexpr bool python_embedder_detail::parse_arguments(PyObject* args, ParameterTypeTuple& parsedArguments, std::index_sequence<ArgumentIndices...>)
 {
-	bool parseResult = true;
-	boost::mp11::mp_for_each<boost::mp11::mp_iota_c<ArgumentCount>>([&](auto i)
+	std::vector<bool> parseResults = { parse_argument_helper<ParameterTypeTuple, ArgumentIndices>(args, parsedArguments)... };
+	
+	return std::all_of(parseResults.begin(), parseResults.end(), [](auto e) { return e; });
+}
+
+
+template<typename ParameterTypeTuple, size_t i>
+bool python_embedder_detail::parse_argument_helper(PyObject* args, ParameterTypeTuple& parsedArguments)
+{
+	using NthParameterType = std::tuple_element_t<i, ParameterTypeTuple>;
+
+	PyObject* const pyObjectValue = PyTuple_GetItem(args, i);
+	TempVarType<NthParameterType> value;
+
+	if constexpr (std::is_fundamental_v<NthParameterType> || std::is_enum_v<NthParameterType> || std::is_same_v<NthParameterType, const char*>)
+	{
+		const char* format = get_type_format_string<NthParameterType>();
+
+		if (!PyArg_Parse(pyObjectValue, format, &value))
 		{
-			using NthParameterType = std::tuple_element_t<i, ParameterTypeTuple>;
-
-			PyObject* const pyObjectValue = PyTuple_GetItem(args, i);
-			TempVarType<NthParameterType> value;
-
-			if constexpr (std::is_fundamental_v<NthParameterType> || std::is_enum_v<NthParameterType> || std::is_same_v<NthParameterType, const char*>)
-			{
-				const char* format = get_type_format_string<NthParameterType>();
-
-				if (!PyArg_Parse(pyObjectValue, format, &value))
-				{
-					parseResult = false;
-					return;
-				}
-			}
-			else if constexpr (std::is_same_v<NthParameterType, std::string>)
-			{
-				const char* temp;
-				if (!PyArg_Parse(pyObjectValue, "s", &temp))
-				{
-					parseResult = false;
-					return;
-				}
-
-				value = temp;
-			}
-			else if constexpr (std::is_pointer_v<NthParameterType>)
-			{
-				if (!PyArg_Parse(pyObjectValue, "O&", &Converter<NthParameterType>::ParseValuePtr, &value))
-				{
-					parseResult = false;
-					return;
-				}
-			}
-			else 
-			{
-				if (!PyArg_Parse(pyObjectValue, "O&", &Converter<NthParameterType>::ParseValue, &value))
-				{
-					parseResult = false;
-					return;
-				}
-			}
-
-			std::get<i>(parsedArguments) = std::move(static_cast<NthParameterType>(value));
+			return false;
 		}
-	);
+	}
+	else if constexpr (std::is_same_v<NthParameterType, std::string>)
+	{
+		const char* temp;
+		if (!PyArg_Parse(pyObjectValue, "s", &temp))
+		{
+			return false;
+		}
 
-	return parseResult;
+		value = temp;
+	}
+	else if constexpr (std::is_pointer_v<NthParameterType>)
+	{
+		if (!PyArg_Parse(pyObjectValue, "O&", &Converter<NthParameterType>::ParseValuePtr, &value))
+		{
+			return false;
+		}
+	}
+	else
+	{
+		if (!PyArg_Parse(pyObjectValue, "O&", &Converter<NthParameterType>::ParseValue, &value))
+		{
+			return false;
+		}
+	}
+
+	std::get<i>(parsedArguments) = std::move(static_cast<NthParameterType>(value));
+
+	return true;
 }
 
 	
@@ -1023,6 +1040,38 @@ PyObject* python_embedder_detail::execute_and_get_return_value_ref_possible(cons
 			return Py_BuildValue("O&", &Converter<ReturnType>::BuildValue, &returnValue);
 		}
 	}
+}
+
+
+	
+template <typename FieldTypeTuple, typename ExportedClass, typename Offsets, size_t i>
+bool python_embedder_detail::parse_field_helper(ExportedClass* self, PyObject* args)
+{
+	using NthFieldType = std::tuple_element_t<i, FieldTypeTuple>;
+
+	PyObject* const pyObjectValue = PyTuple_GetItem(args, i);
+	TempVarType<NthFieldType> value;
+
+	const char* format = get_type_format_string<NthFieldType>(true);
+
+	if (!PyArg_Parse(pyObjectValue, format, &value))
+	{
+		return false;
+	}
+
+	new (reinterpret_cast<char*>(self->pT) + get_nth_element<size_t>(Offsets{}, i)) NthFieldType(static_cast<NthFieldType>(value));
+
+	return true;
+}
+
+
+
+template <typename FieldTypeTuple, typename ExportedClass, typename Offsets, size_t... FieldIndices>
+bool python_embedder_detail::parse_fields(ExportedClass* self, PyObject* args, std::index_sequence<FieldIndices...>)
+{
+	std::vector<bool> parseResults = { parse_field_helper<FieldTypeTuple, ExportedClass, Offsets, FieldIndices>(self, args)... };
+
+	return std::all_of(parseResults.begin(), parseResults.end(), [](auto e) { return e; });
 }
 
 	
@@ -1135,6 +1184,94 @@ auto python_embedder_detail::get_member_function_replicated_function()
 }
 
 
+	
+template <typename Pairs, HashValueType FunctionNameHashValue, size_t i>
+void python_embedder_detail::template_function_map_register_helper(std::unordered_map<HashValueType, PyObject* (*)(PyObject*, PyObject*)>& functionMap)
+{
+	using Pair = std::tuple_element_t<i, Pairs>;
+	using FunctionPtrType = typename Pair::FunctionPtrType;
+	constexpr FunctionPtrType functionPtr = Pair::functionPtr;
+	constexpr HashValueType templateParametersHashValue = Pair::templateParametersHashValue;
+
+	functionMap[FunctionNameHashValue ^ templateParametersHashValue] = get_function_replicated_function<FunctionPtrType, functionPtr>();
+}
+
+
+	
+template <typename Pairs, HashValueType FunctionNameHashValue, typename InstanceReturnFunctionType, InstanceReturnFunctionType InstanceReturnFunction, size_t i>
+void python_embedder_detail::template_member_function_as_static_function_map_register_helper(std::unordered_map<HashValueType, PyObject*(*)(PyObject*, PyObject*)>& functionMap)
+{
+	using Pair = std::tuple_element_t<i, Pairs>;
+	using FunctionPtrType = typename Pair::FunctionPtrType;
+	constexpr FunctionPtrType functionPtr = Pair::functionPtr;
+	constexpr HashValueType templateParametersHashValue = Pair::templateParametersHashValue;
+
+	functionMap[FunctionNameHashValue ^ templateParametersHashValue] = get_member_function_as_static_function_replicated_function<FunctionPtrType, functionPtr, InstanceReturnFunctionType, InstanceReturnFunction>();
+}
+
+	
+
+template <typename Pairs, HashValueType FunctionNameHashValue, typename InstanceReturnFunctionType, InstanceReturnFunctionType InstanceReturnFunction, typename LambdaPtrType, LambdaPtrType LambdaPtr, size_t i>
+void python_embedder_detail::template_member_function_as_static_function_lambda_map_register_helper(std::unordered_map<HashValueType, PyObject*(*)(PyObject*, PyObject*)>& functionMap)
+{
+	using Pair = std::tuple_element_t<i, Pairs>;
+	using FunctionPtrType = typename Pair::FunctionPtrType;
+	constexpr FunctionPtrType functionPtr = Pair::functionPtr;
+	constexpr HashValueType templateParametersHashValue = Pair::templateParametersHashValue;
+
+	functionMap[FunctionNameHashValue ^ templateParametersHashValue] = get_member_function_as_static_function_lambda_replicated_function<FunctionPtrType, functionPtr, InstanceReturnFunctionType, InstanceReturnFunction, LambdaPtrType, LambdaPtr>();
+}
+
+
+	
+template <typename Pairs, HashValueType FunctionNameHashValue, typename Class, size_t i>
+void python_embedder_detail::template_member_function_map_register_helper(std::unordered_map<HashValueType, PyObject*(*)(PyObject*, PyObject*)>& functionMap)
+{
+	using Pair = std::tuple_element_t<i, Pairs>;
+	using FunctionPtrType = typename Pair::FunctionPtrType;
+	constexpr FunctionPtrType functionPtr = Pair::functionPtr;
+	constexpr HashValueType templateParametersHashValue = Pair::templateParametersHashValue;
+
+	functionMap[FunctionNameHashValue ^ templateParametersHashValue] = get_member_function_replicated_function<FunctionPtrType, functionPtr, Class>();
+}
+
+
+
+template <typename Pairs, HashValueType FunctionNameHashValue, size_t... Indices>
+void python_embedder_detail::template_function_register_to_map(std::unordered_map<HashValueType, PyObject*(*)(PyObject*, PyObject*)>& functionMap, std::index_sequence<Indices...>)
+{
+	using dummy = int[];
+	(void) dummy { (template_function_map_register_helper<Pairs, FunctionNameHashValue, Indices>(functionMap), 0)... };
+}
+
+	
+
+template <typename Pairs, HashValueType FunctionNameHashValue, typename InstanceReturnFunctionType, InstanceReturnFunctionType InstanceReturnFunction, size_t... Indices>
+void python_embedder_detail::template_member_function_as_static_function_register_to_map(std::unordered_map<HashValueType, PyObject*(*)(PyObject*, PyObject*)>& functionMap, std::index_sequence<Indices...>)
+{
+	using dummy = int[];
+	(void) dummy { (template_member_function_as_static_function_map_register_helper<Pairs, FunctionNameHashValue, InstanceReturnFunctionType, InstanceReturnFunction, Indices>(functionMap), 0)... };
+}
+
+	
+
+template <typename Pairs, HashValueType FunctionNameHashValue, typename InstanceReturnFunctionType, InstanceReturnFunctionType InstanceReturnFunction, typename LambdaPtrType, LambdaPtrType LambdaPtr, size_t... Indices>
+void python_embedder_detail::template_member_function_as_static_function_lambda_register_to_map(std::unordered_map<HashValueType, PyObject*(*)(PyObject*, PyObject*)>& functionMap, std::index_sequence<Indices...>)
+{
+	using dummy = int[];
+	(void) dummy { (template_member_function_as_static_function_lambda_map_register_helper<Pairs, FunctionNameHashValue, InstanceReturnFunctionType, InstanceReturnFunction, LambdaPtrType, LambdaPtr, Indices>(functionMap), 0)... };
+}
+
+
+	
+template <typename Pairs, HashValueType FunctionNameHashValue, typename Class, size_t... Indices>
+void python_embedder_detail::template_member_function_register_to_map(std::unordered_map<HashValueType, PyObject*(*)(PyObject*, PyObject*)>& functionMap, std::index_sequence<Indices...>)
+{
+	using dummy = int[];
+	(void) dummy { (template_member_function_map_register_helper<Pairs, FunctionNameHashValue, Class, Indices>(functionMap), 0)... };
+}
+
+
 
 template <typename FunctionPtrType, FunctionPtrType FunctionPtr, typename ReturnType, size_t ParameterCount, typename RefToPtrParameterTypeTuple, typename ParameterTypeTuple>
 PyObject* FunctionDispatcher<FunctionPtrType, FunctionPtr, ReturnType, ParameterCount, RefToPtrParameterTypeTuple, ParameterTypeTuple>
@@ -1142,7 +1279,7 @@ PyObject* FunctionDispatcher<FunctionPtrType, FunctionPtr, ReturnType, Parameter
 {
 	RefToPtrParameterTypeTuple arguments;
 	
-	if (!parse_arguments<ParameterCount>(args, arguments))
+	if (!parse_arguments<RefToPtrParameterTypeTuple>(args, arguments, std::make_index_sequence<ParameterCount>()))
 	{
 		return nullptr;
 	}
@@ -1164,7 +1301,7 @@ PyObject* MemberFunctionAsStaticFunctionDispatcher<FunctionPtrType, FunctionPtr,
 
 	PyObject* const instanceReturnFunctionArgs = PyTuple_GetItem(args, 0);
 	
-	if (!parse_arguments<InstanceReturnFunctionParameterCount>(instanceReturnFunctionArgs, instanceReturnerArguments))
+	if (!parse_arguments<InstanceReturnFunctionParameterTypeTuple>(instanceReturnFunctionArgs, instanceReturnerArguments, std::make_index_sequence<InstanceReturnFunctionParameterCount>()))
 	{
 		return nullptr;
 	}
@@ -1174,7 +1311,7 @@ PyObject* MemberFunctionAsStaticFunctionDispatcher<FunctionPtrType, FunctionPtr,
 
 	PyObject* const realArgs = PyTuple_GetSlice(args, 1, ParameterCount + 1);
 
-	if (!parse_arguments<ParameterCount>(realArgs, arguments))
+	if (!parse_arguments<RefToPtrParameterTypeTuple>(realArgs, arguments, std::make_index_sequence<ParameterCount>()))
 	{
 		Py_DECREF(realArgs);
 		return nullptr;
@@ -1203,7 +1340,7 @@ PyObject* MemberFunctionAsStaticFunctionLambdaDispatcher<FunctionPtrType, Functi
 
 	PyObject* const instanceReturnFunctionArgs = PyTuple_GetItem(args, 0);
 
-	if (!parse_arguments<InstanceReturnFunctionParameterCount>(instanceReturnFunctionArgs, instanceReturnerArguments))
+	if (!parse_arguments<InstanceReturnFunctionParameterTypeTuple>(instanceReturnFunctionArgs, instanceReturnerArguments, std::make_index_sequence<InstanceReturnFunctionParameterCount>()))
 	{
 		return nullptr;
 	}
@@ -1213,7 +1350,7 @@ PyObject* MemberFunctionAsStaticFunctionLambdaDispatcher<FunctionPtrType, Functi
 
 	PyObject* const realArgs = PyTuple_GetSlice(args, 1, ParameterCount + 1);
 
-	if (!parse_arguments<ParameterCount>(realArgs, arguments))
+	if (!parse_arguments<RefToPtrParameterTypeTuple>(realArgs, arguments, std::make_index_sequence<ParameterCount>()))
 	{
 		Py_DECREF(realArgs);
 		return nullptr;
@@ -1242,7 +1379,7 @@ PyObject* MemberFunctionDispatcher<FunctionPtrType, FunctionPtr, ReturnType, Par
 {
 	RefToPtrParameterTypeTuple arguments;
 
-	if (!parse_arguments<ParameterCount>(args, arguments))
+	if (!parse_arguments<RefToPtrParameterTypeTuple>(args, arguments, std::make_index_sequence<ParameterCount>()))
 	{
 		return nullptr;
 	}
@@ -1267,7 +1404,7 @@ PyObject* MemberOperatorDispatcher<FunctionPtrType, FunctionPtr, ReturnType, Par
 
 	PyObject* const argTuple = PyTuple_Pack(1, arg);
 
-	if (!parse_arguments<ParameterCount>(argTuple, arguments))
+	if (!parse_arguments<RefToPtrParameterTypeTuple>(argTuple, arguments, std::make_index_sequence<ParameterCount>()))
 	{
 		Py_DECREF(argTuple);
 		return nullptr;
@@ -1410,16 +1547,7 @@ void Exporter<ModuleNameHashValue>::RegisterTemplateFunction(const char* functio
 	using FunctionMapper = TemplateFunctionDispatcher<FunctionNameHashValue>;
 	auto& functionMap = FunctionMapper::instantiatedFunctions;
 
-	boost::mp11::mp_for_each<boost::mp11::mp_iota_c<pairCount>>([&](auto i)
-		{
-			using Pair = std::tuple_element_t<i, Pairs>;
-			using FunctionPtrType = typename Pair::FunctionPtrType;
-			constexpr FunctionPtrType functionPtr = Pair::functionPtr;
-			constexpr HashValueType templateParametersHashValue = Pair::templateParametersHashValue;
-		
-			functionMap[FunctionNameHashValue ^ templateParametersHashValue] = get_function_replicated_function<FunctionPtrType, functionPtr>();
-		}
-	);
+	template_function_register_to_map<Pairs, FunctionNameHashValue>(functionMap, std::make_index_sequence<pairCount>());
 	
 	methods.push_back(PyMethodDef{ functionName, &FunctionMapper::ReplicatedFunction, METH_VARARGS, nullptr });
 }
@@ -1436,16 +1564,7 @@ void Exporter<ModuleNameHashValue>::RegisterTemplateMemberFunctionAsStaticFuncti
 	using FunctionMapper = TemplateFunctionDispatcher<FunctionNameHashValue>;
 	auto& functionMap = FunctionMapper::instantiatedFunctions;
 
-	boost::mp11::mp_for_each<boost::mp11::mp_iota_c<pairCount>>([&](auto i)
-		{
-			using Pair = std::tuple_element_t<i, Pairs>;
-			using FunctionPtrType = typename Pair::FunctionPtrType;
-			constexpr FunctionPtrType functionPtr = Pair::functionPtr;
-			constexpr HashValueType templateParametersHashValue = Pair::templateParametersHashValue;
-
-			functionMap[FunctionNameHashValue ^ templateParametersHashValue] = get_member_function_as_static_function_replicated_function<FunctionPtrType, functionPtr, InstanceReturnFunctionType, InstanceReturnFunction>();
-		}
-	);
+	template_member_function_as_static_function_register_to_map<Pairs, FunctionNameHashValue, InstanceReturnFunctionType, InstanceReturnFunction>(functionMap, std::make_index_sequence<pairCount>());
 
 	methods.push_back(PyMethodDef{ functionName, &FunctionMapper::ReplicatedFunction, METH_VARARGS, nullptr });
 }
@@ -1462,16 +1581,7 @@ void Exporter<ModuleNameHashValue>::RegisterTemplateMemberFunctionAsStaticFuncti
 	using FunctionMapper = TemplateFunctionDispatcher<FunctionNameHashValue>;
 	auto& functionMap = FunctionMapper::instantiatedFunctions;
 
-	boost::mp11::mp_for_each<boost::mp11::mp_iota_c<pairCount>>([&](auto i)
-		{
-			using Pair = std::tuple_element_t<i, Pairs>;
-			using FunctionPtrType = typename Pair::FunctionPtrType;
-			constexpr FunctionPtrType functionPtr = Pair::functionPtr;
-			constexpr HashValueType templateParametersHashValue = Pair::templateParametersHashValue;
-
-			functionMap[FunctionNameHashValue ^ templateParametersHashValue] = get_member_function_as_static_function_lambda_replicated_function<FunctionPtrType, functionPtr, InstanceReturnFunctionType, InstanceReturnFunction, LambdaPtrType, LambdaPtr>();
-		}
-	);
+	template_member_function_as_static_function_lambda_register_to_map<Pairs, FunctionNameHashValue, InstanceReturnFunctionType, InstanceReturnFunction, LambdaPtrType, LambdaPtr>(functionMap, std::make_index_sequence<pairCount>());
 
 	methods.push_back(PyMethodDef{ functionName, &FunctionMapper::ReplicatedFunction, METH_VARARGS, nullptr });
 }
@@ -1496,16 +1606,7 @@ void Exporter<ModuleNameHashValue>::RegisterTemplateMemberFunction(const char* f
 	using FunctionMapper = TemplateFunctionDispatcher<FunctionNameHashValue>;
 	auto& functionMap = FunctionMapper::instantiatedFunctions;
 
-	boost::mp11::mp_for_each<boost::mp11::mp_iota_c<pairCount>>([&](auto i)
-		{
-			using Pair = std::tuple_element_t<i, Pairs>;
-			using FunctionPtrType = typename Pair::FunctionPtrType;
-			constexpr FunctionPtrType functionPtr = Pair::functionPtr;
-			constexpr HashValueType templateParametersHashValue = Pair::templateParametersHashValue;
-
-			functionMap[FunctionNameHashValue ^ templateParametersHashValue] = get_member_function_replicated_function<FunctionPtrType, functionPtr, Class>();
-		}
-	);
+	template_member_function_register_to_map<Pairs, FunctionNameHashValue, Class>(functionMap, std::make_index_sequence<pairCount>());
 
 	PyExportedClass<Class>::methods.push_back(PyMethodDef{ functionName, &FunctionMapper::ReplicatedFunction, METH_VARARGS, nullptr });
 }
