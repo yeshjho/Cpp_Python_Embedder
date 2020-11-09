@@ -71,7 +71,6 @@ int main()
 It's still being actively developed. Although most of the common features are covered by now, it's still missing some features.
 
 Most importantly, it depends on the following external libraries:
-- boost.mpl.algorithm
 - boost.preprocessor.seq.for_each
 - boost.preprocessor.seq.pop_back
 - boost.preprocessor.seq.reverse
@@ -104,7 +103,7 @@ You'll be using the macros only, since a lot of information should be passed int
 
 #### Operators
 - Macros
-    - `PY_EXPORT_GLOBAL_OPERATOR(func, operatorType, moduleName)`: Exports a normal global operator.
+    - `PY_EXPORT_GLOBAL_OPERATOR(func, operatorType, moduleName)`: Exports a normal global operator. **NOT YET IMPLEMENTED**
     - `PY_EXPORT_MEMBER_OPERATOR(T, func, operatorType, moduleName)`: Exports a normal member operator. Note that the type should be exported later.
 
 - Parameters
@@ -234,7 +233,7 @@ The function's return type should be one of:
 - Resolve memory leak issue
 
 ### Easier Debugging
-- More thorough error check
+- More thorough error checking
 
 ### Feature Expansion
 #### Classes
@@ -244,6 +243,7 @@ The function's return type should be one of:
 
 
 #### Operators
+- Support global operators
 - Support comparison operators
 - Support call(`()`) and subscript(`[]`) opeartors
 - Support template (maybe?)
